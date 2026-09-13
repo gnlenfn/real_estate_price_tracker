@@ -1,0 +1,9 @@
+'use client';
+import {FormEvent,useState} from 'react';
+import {supabase} from '@/lib/supabase';
+
+export default function AdminLoginPage(){
+ const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+ async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!supabase)return;const form=new FormData(event.currentTarget);setBusy(true);setMessage('');try{const {error}=await supabase.auth.signInWithPassword({email:String(form.get('email')),password:String(form.get('password'))});if(error)throw new Error('이메일 또는 비밀번호를 확인해 주세요.');const {data:{session}}=await supabase.auth.getSession();const response=await fetch('/api/admin/session',{headers:{Authorization:`Bearer ${session?.access_token||''}`}}),result=await response.json();if(!response.ok||!result.admin){await supabase.auth.signOut({scope:'local'});throw new Error('운영자 계정이 아닙니다.');}window.location.assign('/admin/support');}catch(error){setMessage(error instanceof Error?error.message:'로그인하지 못했습니다.');}finally{setBusy(false);}}
+ return <main className="admin-page"><section className="panel auth-card"><h1>운영자 로그인</h1><p>운영자 계정으로 문의함을 관리합니다.</p><form className="support-form" onSubmit={submit}><label>이메일<input name="email" type="email" required autoComplete="username"/></label><label>비밀번호<input name="password" type="password" required autoComplete="current-password"/></label><button className="button primary" disabled={busy}>{busy?'확인 중…':'로그인'}</button></form>{message&&<p className="notice">{message}</p>}</section></main>;
+}

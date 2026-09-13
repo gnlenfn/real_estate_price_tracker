@@ -95,6 +95,18 @@ $$;
 revoke all on function public.ensure_profile() from public, anon;
 grant execute on function public.ensure_profile() to authenticated;
 
+create table public.app_admins (
+ user_id uuid primary key references auth.users(id) on delete cascade,
+ created_at timestamptz not null default now()
+);
+alter table public.app_admins enable row level security;
+
+create or replace function public.is_support_admin() returns boolean language sql stable security definer set search_path=public,pg_temp as $$
+ select auth.uid() is not null and exists(select 1 from public.app_admins where user_id=auth.uid());
+$$;
+revoke all on function public.is_support_admin() from public,anon;
+grant execute on function public.is_support_admin() to authenticated;
+
 create table public.support_tickets (
  id uuid primary key default gen_random_uuid(),
  user_id uuid not null references auth.users(id) on delete cascade,
@@ -103,13 +115,161 @@ create table public.support_tickets (
  body text not null check(char_length(body) between 10 and 4000),
  screen text not null default '' check(char_length(screen) <= 200),
  browser text not null default '' check(char_length(browser) <= 500),
- status text not null default 'pending' check(status in ('pending','sent','failed')),
+ status text not null default 'open' check(status in ('open','answered','closed')),
+ last_activity_at timestamptz not null default now(),
+ github_status text not null default 'pending' check(github_status in ('pending','sending','sent','failed','unknown')),
  github_issue_number integer,
  github_issue_url text check(github_issue_url is null or char_length(github_issue_url) <= 500),
  created_at timestamptz not null default now(),
  updated_at timestamptz not null default now()
 );
 create index support_tickets_rate_limit on public.support_tickets(user_id,created_at desc);
+create index support_tickets_activity on public.support_tickets(user_id,last_activity_at desc);
 alter table public.support_tickets enable row level security;
-create policy own_support_tickets_select on public.support_tickets for select to authenticated using(user_id=(select auth.uid()));
-grant select on public.support_tickets to authenticated;
+create policy support_tickets_select on public.support_tickets for select to authenticated using(user_id=(select auth.uid()) or (select public.is_support_admin()));
+create policy support_tickets_admin_update on public.support_tickets for update to authenticated using((select public.is_support_admin())) with check((select public.is_support_admin()));
+grant select,update on public.support_tickets to authenticated;
+
+create table public.support_messages (
+ id uuid primary key default gen_random_uuid(), ticket_id uuid not null references public.support_tickets(id) on delete cascade,
+ author_id uuid not null references auth.users(id) on delete cascade, author_role text not null check(author_role in ('user','admin')),
+ body text not null check(char_length(body) between 1 and 4000), created_at timestamptz not null default now()
+);
+create index support_messages_ticket_created on public.support_messages(ticket_id,created_at);
+alter table public.support_messages enable row level security;
+create policy support_messages_select on public.support_messages for select to authenticated using((select public.is_support_admin()) or exists(select 1 from public.support_tickets ticket where ticket.id=ticket_id and ticket.user_id=(select auth.uid())));
+create policy support_messages_owner_insert on public.support_messages for insert to authenticated with check(author_id=(select auth.uid()) and author_role='user' and exists(select 1 from public.support_tickets ticket where ticket.id=ticket_id and ticket.user_id=(select auth.uid()) and ticket.status<>'closed'));
+create policy support_messages_admin_insert on public.support_messages for insert to authenticated with check(author_id=(select auth.uid()) and author_role='admin' and (select public.is_support_admin()));
+
+create table public.support_attachments (
+ id uuid primary key default gen_random_uuid(), ticket_id uuid not null references public.support_tickets(id) on delete cascade,
+ message_id uuid references public.support_messages(id) on delete cascade, user_id uuid not null references auth.users(id) on delete cascade,
+ storage_path text not null unique check(char_length(storage_path) between 1 and 500), file_name text not null check(char_length(file_name) between 1 and 200),
+ mime_type text not null check(mime_type in ('image/png','image/jpeg','image/webp')), byte_size integer not null check(byte_size between 1 and 5242880), created_at timestamptz not null default now()
+);
+create index support_attachments_ticket on public.support_attachments(ticket_id,created_at);
+alter table public.support_attachments enable row level security;
+create policy support_attachments_select on public.support_attachments for select to authenticated using((select public.is_support_admin()) or exists(select 1 from public.support_tickets ticket where ticket.id=ticket_id and ticket.user_id=(select auth.uid())));
+create policy support_attachments_owner_insert on public.support_attachments for insert to authenticated with check(user_id=(select auth.uid()) and exists(select 1 from public.support_tickets ticket where ticket.id=ticket_id and ticket.user_id=(select auth.uid()) and ticket.status<>'closed'));
+create policy support_attachments_admin_insert on public.support_attachments for insert to authenticated with check(user_id=(select auth.uid()) and (select public.is_support_admin()));
+grant select,insert on public.support_messages,public.support_attachments to authenticated;
+
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('support-attachments','support-attachments',false,5242880,array['image/png','image/jpeg','image/webp']) on conflict(id) do update set public=false,file_size_limit=5242880,allowed_mime_types=array['image/png','image/jpeg','image/webp'];
+create policy support_attachment_objects_select on storage.objects for select to authenticated using(bucket_id='support-attachments' and ((select public.is_support_admin()) or owner_id=(select auth.uid()::text)));
+create policy support_attachment_objects_insert on storage.objects for insert to authenticated with check(bucket_id='support-attachments' and owner_id=(select auth.uid()::text) and (storage.foldername(name))[1]=(select auth.uid()::text) and exists(select 1 from public.support_tickets ticket where ticket.id::text=(storage.foldername(name))[2] and ticket.user_id=(select auth.uid()) and ticket.status<>'closed'));
+create policy support_attachment_objects_delete on storage.objects for delete to authenticated using(bucket_id='support-attachments' and ((select public.is_support_admin()) or owner_id=(select auth.uid()::text)));
+
+create table public.trade_sync_runs (
+ id uuid primary key default gen_random_uuid(), trigger text not null check(trigger in ('cron','manual')),
+ status text not null default 'running' check(status in ('running','success','partial','failed')), started_at timestamptz not null default now(), finished_at timestamptz,
+ property_count integer not null default 0 check(property_count>=0), completed_count integer not null default 0 check(completed_count>=0), saved_records integer not null default 0 check(saved_records>=0),
+ failure_count integer not null default 0 check(failure_count>=0), failures jsonb not null default '[]'::jsonb check(jsonb_typeof(failures)='array'), request_id uuid not null default gen_random_uuid(),
+ retry_of uuid references public.trade_sync_runs(id) on delete set null, actor_id uuid references auth.users(id) on delete set null,
+ skipped_count integer not null default 0 check(skipped_count>=0), failure_scope text not null default 'targets' check(failure_scope in ('targets','run'))
+);
+create index trade_sync_runs_started_at on public.trade_sync_runs(started_at desc);
+create unique index trade_sync_runs_single_running on public.trade_sync_runs((true)) where status='running';
+alter table public.trade_sync_runs enable row level security;
+revoke all on public.trade_sync_runs from public,anon,authenticated;
+grant select,insert,update on public.trade_sync_runs to service_role;
+
+create table public.admin_audit_events (
+ id uuid primary key default gen_random_uuid(), actor_id uuid references auth.users(id) on delete set null,
+ action text not null check(action in ('support.reply','support.note','support.status','github.transfer','sync.start','sync.finish')),
+ target_id text not null check(char_length(target_id) between 1 and 200), request_id uuid not null,
+ outcome text not null check(outcome in ('success','failed','unknown')), before_status text, after_status text, created_at timestamptz not null default now()
+);
+create index admin_audit_events_created_at on public.admin_audit_events(created_at desc,id desc);
+create index admin_audit_events_target on public.admin_audit_events(target_id,created_at desc);
+alter table public.admin_audit_events enable row level security;
+revoke all on public.admin_audit_events from public,anon,authenticated;
+grant select,insert on public.admin_audit_events to service_role;
+
+create table public.support_internal_notes (
+ id uuid primary key default gen_random_uuid(), ticket_id uuid not null references public.support_tickets(id) on delete cascade,
+ author_id uuid references auth.users(id) on delete set null, body text not null check(char_length(body) between 1 and 4000), created_at timestamptz not null default now()
+);
+create index support_internal_notes_ticket on public.support_internal_notes(ticket_id,created_at,id);
+alter table public.support_internal_notes enable row level security;
+revoke all on public.support_internal_notes from public,anon,authenticated;
+grant select,insert on public.support_internal_notes to service_role;
+
+create or replace function public.add_support_internal_note(p_ticket_id uuid,p_author_id uuid,p_body text,p_request_id uuid)
+returns table(id uuid,created_at timestamptz) language plpgsql security invoker set search_path=public as $$
+declare v_id uuid;v_created_at timestamptz;
+begin
+ if char_length(btrim(p_body)) not between 1 and 4000 then raise exception 'Invalid note'; end if;
+ if not exists(select 1 from public.support_tickets where support_tickets.id=p_ticket_id) then raise exception 'Ticket not found'; end if;
+ insert into public.support_internal_notes(ticket_id,author_id,body) values(p_ticket_id,p_author_id,btrim(p_body)) returning support_internal_notes.id,support_internal_notes.created_at into v_id,v_created_at;
+ insert into public.admin_audit_events(actor_id,action,target_id,request_id,outcome) values(p_author_id,'support.note',p_ticket_id::text,p_request_id,'success');
+ return query select v_id,v_created_at;
+end $$;
+revoke all on function public.add_support_internal_note(uuid,uuid,text,uuid) from public,anon,authenticated;
+grant execute on function public.add_support_internal_note(uuid,uuid,text,uuid) to service_role;
++
+create table public.user_activity_summary (
+ user_id uuid primary key references auth.users(id) on delete cascade, last_activity_at timestamptz not null
+);
+alter table public.user_activity_summary enable row level security;
+revoke all on public.user_activity_summary from public,anon,authenticated;
+grant select,insert,update on public.user_activity_summary to service_role;
+
+create or replace function public.touch_user_activity() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_user_id uuid;
+begin
+ v_user_id:=case when tg_table_name='support_messages' then new.author_id else new.user_id end;
+ if tg_table_name='support_messages' and new.author_role<>'user' then return new; end if;
+ insert into public.user_activity_summary(user_id,last_activity_at) values(v_user_id,now()) on conflict(user_id) do update set last_activity_at=excluded.last_activity_at;
+ return new;
+end $$;
+create trigger properties_touch_activity after insert or update on public.properties for each row execute function public.touch_user_activity();
+create trigger records_touch_activity after insert or update on public.records for each row execute function public.touch_user_activity();
+create trigger support_tickets_touch_activity after insert on public.support_tickets for each row execute function public.touch_user_activity();
+create trigger support_messages_touch_activity after insert on public.support_messages for each row execute function public.touch_user_activity();
+
+create or replace function public.admin_list_users(p_search text default '',p_before_joined_at timestamptz default null,p_before_id uuid default null,p_limit integer default 50)
+returns table(id uuid,nickname text,joined_at timestamptz,property_count bigint,ticket_count bigint,last_activity_at timestamptz)
+language sql stable security definer set search_path=public,auth,pg_temp as $$
+ select u.id,coalesce(p.nickname,'집 사용자'),u.created_at,
+  (select count(*) from public.properties x where x.user_id=u.id),
+  (select count(*) from public.support_tickets t where t.user_id=u.id),a.last_activity_at
+ from auth.users u left join public.profiles p on p.user_id=u.id left join public.user_activity_summary a on a.user_id=u.id
+ where (btrim(p_search)='' or p.nickname ilike '%'||replace(replace(btrim(p_search),'%','\%'),'_','\_')||'%' escape '\')
+ and (p_before_joined_at is null or (u.created_at,u.id)<(p_before_joined_at,p_before_id))
+ order by u.created_at desc,u.id desc limit least(greatest(p_limit,1),50)
+$$;
+revoke all on function public.admin_list_users(text,timestamptz,uuid,integer) from public,anon,authenticated;
+grant execute on function public.admin_list_users(text,timestamptz,uuid,integer) to service_role;
+
+create table public.integration_checks (
+ id uuid primary key default gen_random_uuid(), service text not null check(service in ('supabase','molit','kakao','github')),
+ status text not null check(status in ('success','failed','unconfigured')), request_id uuid not null, checked_at timestamptz not null default now()
+);
+create index integration_checks_service_time on public.integration_checks(service,checked_at desc);
+alter table public.integration_checks enable row level security;
+revoke all on public.integration_checks from public,anon,authenticated;
+grant select,insert on public.integration_checks to service_role;
+
+create table public.support_github_message_exports (
+ message_id uuid primary key references public.support_messages(id) on delete cascade,
+ ticket_id uuid not null references public.support_tickets(id) on delete cascade,
+ status text not null check(status in ('sending','sent','failed','unknown')), github_comment_id bigint,
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+alter table public.support_github_message_exports enable row level security;
+revoke all on public.support_github_message_exports from public,anon,authenticated;
+grant select,insert,update on public.support_github_message_exports to service_role;
+
+create or replace function public.admin_list_support_tickets(p_status text default '',p_category text default '',p_github text default '',p_search text default '',p_before_activity timestamptz default null,p_before_id uuid default null,p_limit integer default 50)
+returns table(id uuid,user_id uuid,category text,title text,body text,status text,created_at timestamptz,last_activity_at timestamptz,github_status text,github_issue_number integer,github_issue_url text,nickname text)
+language sql stable security definer set search_path=public,pg_temp as $$
+ select t.id,t.user_id,t.category,t.title,t.body,t.status,t.created_at,t.last_activity_at,t.github_status,t.github_issue_number,t.github_issue_url,coalesce(p.nickname,'집 사용자')
+ from public.support_tickets t left join public.profiles p on p.user_id=t.user_id
+ where (p_status='' or t.status=p_status) and (p_category='' or t.category=p_category)
+ and (p_github='' or (p_github='sent' and t.github_issue_number is not null) or (p_github='pending' and t.github_issue_number is null))
+ and (btrim(p_search)='' or t.title ilike '%'||replace(replace(btrim(p_search),'%','\%'),'_','\_')||'%' escape '\' or p.nickname ilike '%'||replace(replace(btrim(p_search),'%','\%'),'_','\_')||'%' escape '\')
+ and (p_before_activity is null or (t.last_activity_at,t.id)<(p_before_activity,p_before_id))
+ order by t.last_activity_at desc,t.id desc limit least(greatest(p_limit,1),50)
+$$;
+revoke all on function public.admin_list_support_tickets(text,text,text,text,timestamptz,uuid,integer) from public,anon,authenticated;
+grant execute on function public.admin_list_support_tickets(text,text,text,text,timestamptz,uuid,integer) to service_role;

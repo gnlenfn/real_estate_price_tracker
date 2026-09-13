@@ -19,9 +19,11 @@ export async function runScheduledSync(
  loadDistrict:(district:string,month:string)=>Promise<Record<string,string>[]>,
  saveMonth:(property:ScheduledProperty,month:string,rows:ReturnType<typeof matchTrades>)=>Promise<void>,
  concurrency=4,
+ allowedPairs?:Set<string>,
 ):Promise<ScheduledSummary>{
  const groups=new Map<string,{district:string;month:string;properties:ScheduledProperty[]}>();
  for(const property of properties)for(const month of months){
+  if(allowedPairs&&!allowedPairs.has(`${property.id}:${month}`))continue;
   const key=`${property.district}:${month}`;
   const group=groups.get(key)??{district:property.district,month,properties:[]};
   group.properties.push(property);groups.set(key,group);

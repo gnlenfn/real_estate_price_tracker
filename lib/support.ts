@@ -14,6 +14,17 @@ export function validateSupportInput(input:SupportInput){
  return null;
 }
 
+export function validateMessage(body:string){
+ const value=body.trim();
+ if(!value)return '내용을 입력해 주세요.';
+ if([...value].length>4000)return '내용은 4,000자 이하로 입력해 주세요.';
+ return null;
+}
+
+export function publicTicketResponse(ticketId:string,_github:{number:number;url:string}|null){
+ return {ticketId};
+}
+
 const redact=(value:string)=>value
  .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[이메일 가림]')
  .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,'[식별값 가림]');
@@ -31,7 +42,7 @@ export function githubIssuePayload(context:SupportContext){
    `- 앱 닉네임: ${oneLine(context.nickname,30)}`,
    `- 화면: ${oneLine(context.screen,200)}`,
    `- 브라우저: ${oneLine(context.browser,500)}`,
-   '', '> 집간격 앱에서 접수된 사용자 문의입니다.',
+   '', '> 집업 앱에서 접수된 사용자 문의입니다.',
   ].join('\n'),
   labels:['user-feedback',category],
  };

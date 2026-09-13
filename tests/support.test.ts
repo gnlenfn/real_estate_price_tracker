@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {githubIssuePayload,validateSupportInput} from '../lib/support';
+import {githubIssuePayload,publicTicketResponse,validateMessage,validateSupportInput} from '../lib/support';
 
 test('support validation rejects invalid categories and undersized content',()=>{
  assert.equal(validateSupportInput({category:'other',title:'오류',body:'짧음'}),'문의 유형을 확인해 주세요.');
@@ -25,4 +25,14 @@ test('GitHub issue payload redacts emails and UUIDs pasted into user content',()
  assert.doesNotMatch(`${payload.title}\n${payload.body}`,/user@example\.com|123e4567-e89b-12d3-a456-426614174000/);
  assert.match(payload.body,/\[이메일 가림\]/);
  assert.match(payload.body,/\[식별값 가림\]/);
+});
+
+test('support intake response does not expose GitHub issue metadata',()=>{
+ assert.deepEqual(publicTicketResponse('ticket-1',{number:12,url:'https://github.com/x/y/issues/12'}),{ticketId:'ticket-1'});
+});
+
+test('message validation rejects a blank or overly long reply',()=>{
+ assert.equal(validateMessage('   '),'내용을 입력해 주세요.');
+ assert.equal(validateMessage('a'.repeat(4001)),'내용은 4,000자 이하로 입력해 주세요.');
+ assert.equal(validateMessage('답변을 남겼습니다.'),null);
 });

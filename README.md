@@ -1,4 +1,4 @@
-# 집간격 · JIPGAP
+# 집업 · ZIPUP
 
 보유 부동산과 관심단지의 **가격 차액 변화**를 추적하는 개인용 반응형 웹앱입니다. Next.js App Router + Supabase(PostgreSQL/Auth), Vercel 배포를 기준으로 만들었습니다.
 
@@ -36,7 +36,7 @@ npm run dev
 
 1. Supabase 프로젝트를 생성합니다.
 2. SQL Editor에서 `supabase/schema.sql`을 한 번 실행합니다. 두 테이블과 사용자별 RLS 정책, 월별 실거래 원자적 교체 함수를 만듭니다.
-3. Authentication에서 신규 사용자 가입을 허용하고 Google·Kakao 제공자를 연결합니다. 아래 소셜 로그인 설정을 참고하세요. 앱의 `/auth`에서 첫 소셜 로그인 시 가입됩니다. 관리자 구분은 없습니다.
+3. Authentication에서 신규 사용자 가입을 허용하고 Google·Kakao 제공자를 연결합니다. 아래 소셜 로그인 설정을 참고하세요. 앱의 `/auth`에서 첫 소셜 로그인 시 가입됩니다.
 4. Project Settings의 URL과 anon/publishable key를 `.env.local`의 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`에 넣습니다. **service_role 키를 사용하지 마세요.**
 5. 개발 서버를 재시작하고 앱에서 구글 또는 카카오로 로그인합니다. 모든 조회·쓰기에는 사용자별 RLS가 적용됩니다.
 
@@ -44,7 +44,7 @@ npm run dev
 
 ### 서비스 시작 전 운영 DB 완전 초기화
 
-운영 전 테스트 계정과 데이터를 모두 지우려면 Supabase SQL Editor에서 `supabase/production-reset.sql` 전체를 한 번 실행합니다. 이 스크립트는 `auth.users`와 집간격의 단지·가격·닉네임·문의 데이터를 삭제하고 최신 스키마를 다시 생성합니다. 프로젝트 URL, API 키, Google·Kakao 제공자 설정은 유지됩니다. 실제 서비스 시작 후에는 사용하지 마세요.
+운영 전 테스트 계정과 데이터를 모두 지우려면 Supabase SQL Editor에서 `supabase/production-reset.sql` 전체를 한 번 실행합니다. 이 스크립트는 `auth.users`와 집업의 단지·가격·닉네임·문의 데이터를 삭제하고 최신 스키마를 다시 생성합니다. 프로젝트 URL, API 키, Google·Kakao 제공자 설정은 유지됩니다. 실제 서비스 시작 후에는 사용하지 마세요.
 
 ## 국토교통부 실거래 API
 
@@ -72,8 +72,8 @@ npm run dev
 ## Vercel 배포
 
 1. 저장소를 본인 GitHub에 올리고 Vercel에서 Import Project합니다. Framework Preset은 Next.js입니다.
-2. 기존 환경변수에 `KAKAO_REST_API_KEY`, `SUPABASE_SECRET_KEY`, `CRON_SECRET`, `GITHUB_ISSUES_TOKEN`을 더해 Vercel Project Settings → Environment Variables에 등록합니다. `KAKAO_REST_API_KEY`는 카카오 디벨로퍼스 앱의 REST API 키이며 서버에서만 읽습니다. `SUPABASE_SECRET_KEY`는 Supabase Settings → API Keys의 서버 전용 secret key이며 브라우저에 노출하거나 `NEXT_PUBLIC_` 접두사를 붙이면 안 됩니다. `CRON_SECRET`은 16자 이상의 임의 문자열로 만듭니다.
-3. 기존 프로젝트는 Supabase SQL Editor에서 `supabase/weekly-sync.sql`, `supabase/migrations/20260913090000_add_profiles.sql`, `supabase/migrations/20260913093000_add_support_tickets.sql`을 순서대로 한 번 실행합니다. 새 프로젝트에서 최신 `supabase/schema.sql`을 실행했다면 생략합니다.
+2. 기존 환경변수에 `KAKAO_REST_API_KEY`, `SUPABASE_SECRET_KEY`, `CRON_SECRET`, `GITHUB_ISSUES_TOKEN`을 더해 Vercel Project Settings → Environment Variables에 등록합니다. `KAKAO_REST_API_KEY`는 카카오 디벨로퍼스 앱의 REST API 키이며 서버에서만 읽습니다. `SUPABASE_SECRET_KEY`는 Supabase Settings → API Keys의 서버 전용 secret key이며 브라우저에 노출하거나 `NEXT_PUBLIC_` 접두사를 붙이면 안 됩니다. `CRON_SECRET`은 16자 이상의 임의 문자열로 만듭니다. GitHub 토큰은 관리자가 문의를 개발 이슈로 전환할 때만 사용합니다.
+3. 기존 프로젝트는 `supabase/migrations/`에서 아직 적용하지 않은 SQL을 시간순으로 실행합니다. 새 프로젝트에서 최신 `supabase/schema.sql`을 실행했다면 생략합니다.
 4. Deploy를 실행합니다. Supabase Authentication URL Configuration의 Site URL을 배포 URL로 지정합니다. Cron은 프로덕션 배포에서만 동작합니다.
 5. Vercel Settings → Cron Jobs에서 `/api/cron/trades`가 등록됐는지 확인합니다.
 6. PC와 모바일에서 같은 Vercel 주소를 열고 동일한 개인 계정으로 로그인합니다.
@@ -152,4 +152,10 @@ npm run build
 
 첫 로그인 뒤 형용사와 구체적인 동물 종을 조합한 고유 앱 닉네임을 만듭니다. Google·Kakao의 이름, 이메일과 프로필 사진은 닉네임에 사용하지 않습니다. 설정에서 2~30자의 다른 고유 닉네임으로 변경할 수 있습니다.
 
-설정의 문의하기에서 접수한 내용은 `gnlenfn/real_estate_price_tracker`의 GitHub Issue로 생성됩니다. Vercel에 서버 전용 `GITHUB_ISSUES_TOKEN`을 추가하세요. GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens에서 해당 저장소만 선택하고 **Issues: Read and write** 권한만 부여합니다. 다른 저장소를 쓰려면 `GITHUB_ISSUES_REPOSITORY=소유자/저장소`를 설정합니다. 이메일, 소셜 계정 이름과 Supabase 사용자 ID는 이슈 본문에 포함되지 않습니다.
+문의는 앱의 비공개 문의함에 먼저 저장됩니다. 관리자는 `/admin/login`으로 로그인해 `/admin/support`에서 대화와 첨부 이미지를 확인하고 답변합니다. 개발 작업이 필요한 문의만 검토 후 GitHub Issue로 전환합니다. Vercel에 서버 전용 `GITHUB_ISSUES_TOKEN`을 추가하고, Fine-grained token에는 해당 저장소의 **Issues: Read and write** 권한만 부여합니다. 다른 저장소를 쓰려면 `GITHUB_ISSUES_REPOSITORY=소유자/저장소`를 설정합니다.
+
+관리자 계정은 Supabase Authentication → Users에서 이메일·비밀번호 사용자로 만든 뒤 SQL Editor에서 `insert into public.app_admins(user_id) values ('관리자 사용자 UUID');`를 실행해 등록합니다. 일반 소셜 로그인 사용자는 관리자 경로에 접근할 수 없습니다. `/admin`에서는 미답변 문의와 예약 수집 상태를 확인하고, `/admin/sync`에서는 전체 수동 실행과 실패한 단지·월만 재시도할 수 있습니다. `/admin/support`의 내부 메모는 사용자에게 공개되지 않으며, 사용자 조회·연동 점검·관리자 활동 기록은 각각 별도 메뉴에서 확인합니다.
+
+운영 배포 전 `supabase/migrations`를 파일명 순서대로 적용합니다. 특히 관리자 추가 기능은 `20260913120912`부터 `20260913122341`까지 순서대로 적용해야 합니다. 되돌릴 때는 운영 데이터를 삭제하지 말고 해당 관리자 화면과 API만 이전 배포로 비활성화합니다. 예약 실행 상태를 정확히 판정하려면 Vercel에 `CRON_ENABLED_AT`을 첫 운영 배포 시각의 UTC ISO 값으로 추가합니다.
+
+사용자 화면과 API 응답에는 내부 오류, 공급자 응답, 환경변수 이름을 표시하지 않습니다. 서버 오류 응답의 `requestId`로 Vercel Logs를 검색하면 상세 원인을 확인할 수 있습니다. API 키, 토큰, 이메일과 사용자 UUID는 로그 기록 전에 가립니다.
