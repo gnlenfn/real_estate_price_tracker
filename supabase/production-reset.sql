@@ -1,3 +1,18 @@
+-- DANGER: This permanently deletes every login account and all JIPGAP app data.
+-- Run only in the production Supabase project before public launch.
+begin;
+
+delete from auth.users;
+
+drop function if exists public.ensure_profile();
+drop function if exists public.replace_molit_month(uuid,text,jsonb);
+drop function if exists public.replace_molit_month_scheduled(uuid,uuid,text,jsonb);
+drop table if exists public.support_tickets;
+drop table if exists public.records;
+drop table if exists public.properties;
+drop table if exists public.profiles;
+
+
 -- Run once in the Supabase SQL editor. Create your personal user in Authentication.
 create table public.properties (
  id uuid primary key default gen_random_uuid(),
@@ -113,3 +128,5 @@ create index support_tickets_rate_limit on public.support_tickets(user_id,create
 alter table public.support_tickets enable row level security;
 create policy own_support_tickets_select on public.support_tickets for select to authenticated using(user_id=(select auth.uid()));
 grant select on public.support_tickets to authenticated;
+
+commit;

@@ -14,7 +14,7 @@ export async function GET(request:Request){
  const db=createClient(url,secret,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
  const properties:ScheduledProperty[]=[];
  for(let offset=0;;offset+=1000){
-  const {data,error}=await db.from('properties').select('id,user_id,name,district,dong,area,owned,color').order('id').range(offset,offset+999);
+  const {data,error}=await db.from('properties').select('id,user_id,name,district,dong,area,owned,color,apt_seq,kakao_place_id,road_address,jibun_address').order('id').range(offset,offset+999);
   if(error)return Response.json({error:'Could not load properties.'},{status:502});
   properties.push(...(data as ScheduledProperty[]));
   if(data.length<1000)break;

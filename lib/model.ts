@@ -1,7 +1,8 @@
 export type Kind = 'trade' | 'estimate' | 'asking';
-export type Property = { id: string; name: string; district: string; dong: string; area: number; owned: boolean; color: string };
+export type Property = { id: string; name: string; district: string; dong: string; area: number; owned: boolean; color: string; apt_seq?:string|null; kakao_place_id?:string|null; road_address?:string; jibun_address?:string };
 export type Record = { id: string; property_id: string; date: string; price: number; kind: Kind; source: string; note: string };
 export type Data = { properties: Property[]; records: Record[] };
+export type Interval = 'month' | 'week';
 export const labels: {[key in Kind]: string} = {trade:'실거래가',estimate:'직접 평가',asking:'호가'};
 // `asking` remains readable for existing backups and database rows, but new UI
 // only offers the two supported price sources below.
@@ -11,20 +12,23 @@ export const money = (n: number | null | undefined) => n == null ? '—' : `${(n
 export function median(values: number[]) { const a=[...values].sort((a,b)=>a-b); const m=Math.floor(a.length/2); return a.length ? a.length%2 ? a[m] : (a[m-1]+a[m])/2 : null; }
 // Price lines contain only observed monthly medians. Gap points use each side's latest
 // known value at an event month so manual home values can be compared with sparse trades.
-export function series(data: Data, baseId: string, kind: Kind, months: number, now = new Date(), baseKind: Kind = kind) {
- const end = now.getUTCFullYear()*12+now.getUTCMonth();
- const rows=Array.from({length:months},(_,i)=>{ const serial=end-months+1+i; const month=`${Math.floor(serial/12)}-${String(serial%12+1).padStart(2,'0')}`;
- const row: {[key:string]: string|number|null}={month,label:month.slice(2).replace('-','.')};
- for(const p of data.properties) row[p.id]=median(data.records.filter(r=>r.property_id===p.id&&r.kind===(p.id===baseId?baseKind:kind)&&r.date.startsWith(month)).map(r=>r.price));
+const isoDate=(date:Date)=>date.toISOString().slice(0,10);
+function monday(date:Date){const copy=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));copy.setUTCDate(copy.getUTCDate()-((copy.getUTCDay()+6)%7));return copy;}
+function periodKey(date:string,interval:Interval){if(interval==='month')return date.slice(0,7);return isoDate(monday(new Date(`${date.slice(0,10)}T00:00:00Z`)));}
+export function series(data: Data, baseId: string, kind: Kind, periods: number, now = new Date(), baseKind: Kind = kind, interval:Interval='month') {
+ const keys=interval==='month'?(()=>{const end=now.getUTCFullYear()*12+now.getUTCMonth();return Array.from({length:periods},(_,i)=>{const serial=end-periods+1+i;return `${Math.floor(serial/12)}-${String(serial%12+1).padStart(2,'0')}`;});})():(()=>{const end=monday(now);return Array.from({length:periods},(_,i)=>{const start=new Date(end);start.setUTCDate(start.getUTCDate()-(periods-1-i)*7);return isoDate(start);});})();
+ const rows=keys.map(period=>{
+ const row: {[key:string]: string|number|null}={month:period,label:interval==='month'?period.slice(2).replace('-','.'):period.slice(5).replace('-','.')};
+ for(const p of data.properties) row[p.id]=median(data.records.filter(r=>r.property_id===p.id&&r.kind===(p.id===baseId?baseKind:kind)&&periodKey(r.date,interval)===period).map(r=>r.price));
  return row;
  });
  const latest:{[id:string]:{value:number;month:string}}={};
  const firstMonth=String(rows[0]?.month||'');
  for(const p of data.properties){
   const selectedKind=p.id===baseId?baseKind:kind;
-  const prior=data.records.filter(r=>r.property_id===p.id&&r.kind===selectedKind&&r.date.slice(0,7)<firstMonth).sort((a,b)=>b.date.localeCompare(a.date));
-  const priorMonth=prior[0]?.date.slice(0,7);
-  if(priorMonth){const value=median(prior.filter(r=>r.date.startsWith(priorMonth)).map(r=>r.price));if(value!=null)latest[p.id]={value,month:priorMonth};}
+  const prior=data.records.filter(r=>r.property_id===p.id&&r.kind===selectedKind&&periodKey(r.date,interval)<firstMonth).sort((a,b)=>b.date.localeCompare(a.date));
+  const priorMonth=prior[0]&&periodKey(prior[0].date,interval);
+  if(priorMonth){const value=median(prior.filter(r=>periodKey(r.date,interval)===priorMonth).map(r=>r.price));if(value!=null)latest[p.id]={value,month:priorMonth};}
  }
  for(const row of rows){
   const changed=new Set<string>();

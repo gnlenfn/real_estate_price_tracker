@@ -1,0 +1,2 @@
+-- Local development starts empty. Create an isolated anonymous development
+-- account from the app's local login screen.

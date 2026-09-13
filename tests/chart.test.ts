@@ -29,3 +29,25 @@ test('missing chosen kind is explained even when other records exist',()=>{
  const rows=series(data,'home','asking',2,new Date('2026-09-12'));
  assert.match(chartAvailability(data,rows,'home','asking','asking','gap')!,/호가 기록이 없습니다/);
 });
+
+test('weekly series uses Monday boundaries, weekly medians, and latest known values for gaps',()=>{
+ const weekly:Data={properties,records:[
+  {...record,id:'h0',date:'2026-08-21',price:70000},
+  {...record,id:'h1',date:'2026-08-31',price:76000},
+  {...record,id:'h2',date:'2026-09-02',price:78000},
+  {...record,id:'w1',property_id:'watch',kind:'trade',date:'2026-09-04',price:150000},
+  {...record,id:'w2',property_id:'watch',kind:'trade',date:'2026-09-08',price:154000},
+ ]};
+ const rows=series(weekly,'home','trade',3,new Date('2026-09-09T12:00:00Z'),'estimate','week');
+ assert.deepEqual(rows.map(row=>row.month),['2026-08-24','2026-08-31','2026-09-07']);
+ assert.deepEqual(rows.map(row=>row.label),['08.24','08.31','09.07']);
+ assert.equal(rows[0].home,null);
+ assert.equal(rows[1].home,77000);
+ assert.equal(rows[1].watch,150000);
+ assert.equal(rows[1].gap_watch,73000);
+ assert.equal(rows[2].home,null);
+ assert.equal(rows[2].watch,154000);
+ assert.equal(rows[2].gap_watch,77000);
+ assert.equal(rows[2].gap_base_month_watch,'2026-08-31');
+ assert.equal(rows[2].gap_target_month_watch,'2026-09-07');
+});
