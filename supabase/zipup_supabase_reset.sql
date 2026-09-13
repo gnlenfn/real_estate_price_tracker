@@ -281,8 +281,13 @@ FROM anon, authenticated;
 CREATE TABLE admin.admins (
     user_id uuid PRIMARY KEY
         REFERENCES auth.users(id) ON DELETE CASCADE,
-    created_at timestamptz NOT NULL DEFAULT now()
+    role text NOT NULL DEFAULT 'admin' CHECK (role IN ('super_admin', 'admin')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL
 );
+
+CREATE UNIQUE INDEX admins_one_super_admin
+    ON admin.admins((role)) WHERE role = 'super_admin';
 
 CREATE TABLE admin.trade_sync_runs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -322,7 +327,10 @@ CREATE TABLE admin.audit_events (
             'support.status',
             'github.transfer',
             'sync.start',
-            'sync.finish'
+            'sync.finish',
+            'admin.grant',
+            'admin.revoke',
+            'admin.transfer'
         )
     ),
     target_id text NOT NULL CHECK (char_length(target_id) BETWEEN 1 AND 200),
@@ -902,6 +910,38 @@ ON FUNCTION admin.list_support_tickets(
     text, text, text, text, timestamptz, uuid, integer
 )
 TO service_role;
+
+create or replace function admin.is_super_admin() returns boolean language sql stable security definer set search_path=admin,pg_temp as $$ select auth.uid() is not null and exists(select 1 from admin.admins where user_id=auth.uid() and role='super_admin') $$;
+revoke all on function admin.is_super_admin() from public,anon;
+grant execute on function admin.is_super_admin() to authenticated,service_role;
+
+create or replace function admin.grant_admin(p_actor_id uuid,p_target_id uuid,p_request_id uuid) returns void language plpgsql security invoker set search_path=admin,pg_temp as $$
+begin
+ if not exists(select 1 from admin.admins where user_id=p_actor_id and role='super_admin') then raise exception 'FORBIDDEN'; end if;
+ if exists(select 1 from admin.admins where user_id=p_target_id) then raise exception 'ALREADY_ADMIN'; end if;
+ insert into admin.admins(user_id,role,created_by) values(p_target_id,'admin',p_actor_id);
+ insert into admin.audit_events(actor_id,action,target_id,request_id,outcome) values(p_actor_id,'admin.grant',p_target_id::text,p_request_id,'success');
+end $$;
+
+create or replace function admin.revoke_admin(p_actor_id uuid,p_target_id uuid,p_request_id uuid) returns void language plpgsql security invoker set search_path=admin,pg_temp as $$
+begin
+ if not exists(select 1 from admin.admins where user_id=p_actor_id and role='super_admin') then raise exception 'FORBIDDEN'; end if;
+ if not exists(select 1 from admin.admins where user_id=p_target_id and role='admin') then raise exception 'NOT_REMOVABLE'; end if;
+ delete from admin.admins where user_id=p_target_id and role='admin';
+ insert into admin.audit_events(actor_id,action,target_id,request_id,outcome) values(p_actor_id,'admin.revoke',p_target_id::text,p_request_id,'success');
+end $$;
+
+create or replace function admin.transfer_super_admin(p_actor_id uuid,p_target_id uuid,p_request_id uuid) returns void language plpgsql security invoker set search_path=admin,pg_temp as $$
+begin
+ if p_actor_id=p_target_id or not exists(select 1 from admin.admins where user_id=p_actor_id and role='super_admin') then raise exception 'FORBIDDEN'; end if;
+ if not exists(select 1 from admin.admins where user_id=p_target_id and role='admin') then raise exception 'INVALID_TARGET'; end if;
+ update admin.admins set role='admin' where user_id=p_actor_id and role='super_admin';
+ update admin.admins set role='super_admin' where user_id=p_target_id and role='admin';
+ insert into admin.audit_events(actor_id,action,target_id,request_id,outcome,before_status,after_status) values(p_actor_id,'admin.transfer',p_target_id::text,p_request_id,'success','admin','super_admin');
+end $$;
+
+revoke all on function admin.grant_admin(uuid,uuid,uuid),admin.revoke_admin(uuid,uuid,uuid),admin.transfer_super_admin(uuid,uuid,uuid) from public,anon,authenticated;
+grant execute on function admin.grant_admin(uuid,uuid,uuid),admin.revoke_admin(uuid,uuid,uuid),admin.transfer_super_admin(uuid,uuid,uuid) to service_role;
 
 -- --------------------------------------------------------------------------
 -- 10. Activity trigger functions
