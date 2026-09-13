@@ -1,12 +1,13 @@
 import {createClient} from '@supabase/supabase-js';
 import {apartmentCandidates,jibunFromAddress,type ApartmentCandidate} from '@/lib/apartment';
+import {serverError} from '@/lib/api-error';
 
 export const maxDuration=30;
 
 async function authenticated(request:Request){
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,anon=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
  const token=request.headers.get('authorization');
- if(!url||!anon)return {error:Response.json({error:'Supabase 연결 설정이 필요합니다.'},{status:503})};
+ if(!url||!anon)return {error:Response.json({error:'아파트 검색 기능을 사용할 수 없습니다.'},{status:503})};
  if(!token?.startsWith('Bearer '))return {error:Response.json({error:'로그인이 필요합니다.'},{status:401})};
  const db=createClient(url,anon,{auth:{persistSession:false,autoRefreshToken:false}});
  const {data:{user},error}=await db.auth.getUser(token.slice(7));
@@ -24,7 +25,7 @@ async function kakao(path:string,params:Record<string,string>,key:string){
 export async function POST(request:Request){
  const auth=await authenticated(request);if(auth.error)return auth.error;
  const key=process.env.KAKAO_REST_API_KEY;
- if(!key)return Response.json({error:'아파트명 검색용 KAKAO_REST_API_KEY가 필요합니다. 주소로 직접 찾기는 계속 사용할 수 있습니다.'},{status:503});
+ if(!key)return Response.json({error:'아파트명 검색 기능을 사용할 수 없습니다. 주소로 직접 찾아 주세요.'},{status:503});
  let body:unknown;try{body=await request.json();}catch{return Response.json({error:'검색 조건을 확인해 주세요.'},{status:400});}
  const input=body as {query?:unknown;place?:unknown};
  try{
@@ -45,7 +46,7 @@ export async function POST(request:Request){
    district:String(address.b_code).slice(0,5),dong,jibun:jibunFromAddress(place.address),
    label:[address.region_1depth_name,address.region_2depth_name,dong].filter(Boolean).join(' '),
   }},{headers:{'Cache-Control':'no-store'}});
- }catch{
-  return Response.json({error:'아파트 검색 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하거나 주소로 직접 찾아 주세요.'},{status:502});
+ }catch(error){
+  return serverError('apartments.search',error,'아파트 검색 서비스에 연결하지 못했습니다. 잠시 후 다시 시도하거나 주소로 직접 찾아 주세요.',502);
  }
 }
