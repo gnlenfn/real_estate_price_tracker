@@ -1,5 +1,7 @@
 -- DANGER: This permanently deletes every login account and all JIPGAP app data.
 -- Run only in the production Supabase project before public launch.
+-- Before running, delete the `support-attachments` bucket in Storage Dashboard
+-- (or empty it with the Storage API). Supabase blocks direct SQL deletion of files.
 begin;
 
 delete from auth.users;
@@ -11,8 +13,6 @@ drop policy if exists support_attachment_objects_select on storage.objects;
 drop policy if exists support_attachment_objects_insert on storage.objects;
 drop policy if exists support_attachment_objects_delete on storage.objects;
 drop function if exists public.is_support_admin() cascade;
-delete from storage.objects where bucket_id='support-attachments';
-delete from storage.buckets where id='support-attachments';
 drop function if exists public.add_support_internal_note(uuid,uuid,text,uuid);
 drop function if exists public.admin_list_users(text,timestamptz,uuid,integer);
 drop function if exists public.admin_list_support_tickets(text,text,text,text,timestamptz,uuid,integer);
@@ -188,7 +188,7 @@ create policy support_attachments_owner_insert on public.support_attachments for
 create policy support_attachments_admin_insert on public.support_attachments for insert to authenticated with check(user_id=(select auth.uid()) and (select public.is_support_admin()));
 grant select,insert on public.support_messages,public.support_attachments to authenticated;
 
-insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('support-attachments','support-attachments',false,5242880,array['image/png','image/jpeg','image/webp']);
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('support-attachments','support-attachments',false,5242880,array['image/png','image/jpeg','image/webp']) on conflict(id) do update set public=false,file_size_limit=5242880,allowed_mime_types=array['image/png','image/jpeg','image/webp'];
 create policy support_attachment_objects_select on storage.objects for select to authenticated using(bucket_id='support-attachments' and ((select public.is_support_admin()) or owner_id=(select auth.uid()::text)));
 create policy support_attachment_objects_insert on storage.objects for insert to authenticated with check(bucket_id='support-attachments' and owner_id=(select auth.uid()::text) and (storage.foldername(name))[1]=(select auth.uid()::text) and exists(select 1 from public.support_tickets ticket where ticket.id::text=(storage.foldername(name))[2] and ticket.user_id=(select auth.uid()) and ticket.status<>'closed'));
 create policy support_attachment_objects_delete on storage.objects for delete to authenticated using(bucket_id='support-attachments' and ((select public.is_support_admin()) or owner_id=(select auth.uid()::text)));
@@ -240,7 +240,7 @@ begin
 end $$;
 revoke all on function public.add_support_internal_note(uuid,uuid,text,uuid) from public,anon,authenticated;
 grant execute on function public.add_support_internal_note(uuid,uuid,text,uuid) to service_role;
-+
+
 create table public.user_activity_summary (
  user_id uuid primary key references auth.users(id) on delete cascade, last_activity_at timestamptz not null
 );

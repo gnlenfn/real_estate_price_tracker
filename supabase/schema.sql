@@ -206,7 +206,7 @@ begin
 end $$;
 revoke all on function public.add_support_internal_note(uuid,uuid,text,uuid) from public,anon,authenticated;
 grant execute on function public.add_support_internal_note(uuid,uuid,text,uuid) to service_role;
-+
+
 create table public.user_activity_summary (
  user_id uuid primary key references auth.users(id) on delete cascade, last_activity_at timestamptz not null
 );
