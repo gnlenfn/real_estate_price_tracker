@@ -3,6 +3,22 @@ import { XMLParser } from 'fast-xml-parser';
 import { Property } from './model';
 type Item = {[key:string]:string};
 type ApartmentLookup={name:string;dong:string;aptSeq?:string|null;jibunAddress?:string};
+type MolitRequestInit=RequestInit&{next?:{revalidate:number}};
+type Fetcher=(input:URL,init?:MolitRequestInit)=>Promise<Response>;
+const delay=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
+export async function fetchMolitResponse(url:URL,init:MolitRequestInit,fetcher:Fetcher=fetch,wait:(ms:number)=>Promise<void>=delay){
+ let lastStatus:number|undefined,lastError:unknown;
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   const response=await fetcher(url,{...init,signal:AbortSignal.timeout(15000)});
+   if(response.ok)return response;
+   lastStatus=response.status;
+   if(response.status!==429&&response.status<500)break;
+  }catch(error){lastError=error;}
+  if(attempt<2)await wait(200*2**attempt);
+ }
+ throw new Error(`국토교통부에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.${lastStatus?` (HTTP ${lastStatus})`:lastError?' (network error)':''}`);
+}
 export function parsePage(xml:string): {items:Item[];total:number} {
  const parsed=new XMLParser({parseTagValue:false,trimValues:true}).parse(xml);
  const response=parsed.response;
@@ -41,8 +57,7 @@ export async function fetchDistrictTrades(district:string,month:string,key:strin
  for(let page=1;page<=100;page++) {
  const url=new URL('https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade');
  url.search=new URLSearchParams({serviceKey:key,LAWD_CD:district,DEAL_YMD:month.replace('-',''),pageNo:String(page),numOfRows:'1000'}).toString();
- const res=await fetch(url,{...(cache?{next:{revalidate:3600}}:{cache:'no-store' as const}),signal:AbortSignal.timeout(15000)});
- if(!res.ok) throw new Error('국토교통부에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+ const res=await fetchMolitResponse(url,cache?{next:{revalidate:3600}}:{cache:'no-store' as const});
  const parsed=parsePage(await res.text()); all.push(...parsed.items);
  if(all.length>=parsed.total)return all;
  if(!parsed.items.length) throw new Error('실거래 자료가 일부 누락되어 저장하지 않았습니다.');

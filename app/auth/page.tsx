@@ -56,7 +56,7 @@ export default function AuthPage() {
  async function signInLocal(){
   if(!supabase||requestInFlight.current)return;
   requestInFlight.current=true;setBusy('local');setMessage('');
-  try{const {error}=await supabase.auth.signInAnonymously();if(error){setMessage(authError(error));return;}window.location.replace('/');}
+  try{const response=await fetch('/api/auth/local',{method:'POST'}),result=await response.json();if(!response.ok){setMessage(result.error||'로컬 개발 계정을 준비하지 못했습니다.');return;}const {error}=await supabase.auth.setSession({access_token:result.accessToken,refresh_token:result.refreshToken});if(error){setMessage(authError(error));return;}window.location.replace('/');}
   catch{setMessage('로컬 개발 계정을 만들지 못했습니다. Supabase 실행 상태를 확인해 주세요.');}
   finally{requestInFlight.current=false;setBusy(null);}
  }

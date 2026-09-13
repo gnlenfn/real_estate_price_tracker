@@ -7,7 +7,7 @@ export async function POST(request:Request){
  if(!url||!anon||!key)return Response.json({error:'면적 조회 서비스가 아직 준비되지 않았습니다.'},{status:503});
  const token=request.headers.get('authorization');
  if(!token?.startsWith('Bearer '))return Response.json({error:'면적 목록을 불러오려면 로그인해 주세요.'},{status:401});
- const db=createClient(url,anon,{auth:{persistSession:false,autoRefreshToken:false}});
+ const db=createClient(url,anon,{db:{schema:'app'},auth:{persistSession:false,autoRefreshToken:false}});
  const {data:{user},error}=await db.auth.getUser(token.slice(7));
  if(error||!user)return Response.json({error:'로그인을 다시 해 주세요.'},{status:401});
  let body;

@@ -9,7 +9,7 @@ async function authenticated(request:Request){
  const token=request.headers.get('authorization');
  if(!url||!anon)return {error:Response.json({error:'아파트 검색 기능을 사용할 수 없습니다.'},{status:503})};
  if(!token?.startsWith('Bearer '))return {error:Response.json({error:'로그인이 필요합니다.'},{status:401})};
- const db=createClient(url,anon,{auth:{persistSession:false,autoRefreshToken:false}});
+ const db=createClient(url,anon,{db:{schema:'app'},auth:{persistSession:false,autoRefreshToken:false}});
  const {data:{user},error}=await db.auth.getUser(token.slice(7));
  if(error||!user)return {error:Response.json({error:'로그인을 다시 해 주세요.'},{status:401})};
  return {error:null};

@@ -4,11 +4,11 @@ import {serverError} from '@/lib/api-error';
 
 export async function GET(request:Request){
  try{
-  const {admin}=await requireAdmin(request),since=new Date(Date.now()-7*24*60*60*1000).toISOString();
+  const {admin}=await requireAdmin(request),support=admin.schema('support'),adminDb=admin.schema('admin'),since=new Date(Date.now()-7*24*60*60*1000).toISOString();
   const [unanswered,newTickets,runs]=await Promise.all([
-   admin.from('support_tickets').select('*',{count:'exact',head:true}).eq('status','open'),
-   admin.from('support_tickets').select('*',{count:'exact',head:true}).gte('created_at',since),
-   admin.from('trade_sync_runs').select('id,trigger,status,started_at,finished_at,failure_count').order('started_at',{ascending:false}).limit(30),
+   support.from('tickets').select('*',{count:'exact',head:true}).eq('status','open'),
+   support.from('tickets').select('*',{count:'exact',head:true}).gte('created_at',since),
+   adminDb.from('trade_sync_runs').select('id,trigger,status,started_at,finished_at,failure_count').order('started_at',{ascending:false}).limit(30),
   ]);
   if(unanswered.error||newTickets.error||runs.error)throw unanswered.error||newTickets.error||runs.error;
   const allRuns=runs.data||[],cron=cronHealth(allRuns,new Date(),process.env.CRON_ENABLED_AT||null);

@@ -7,7 +7,7 @@ export async function POST(request:Request) {
  if(!url||!anon||!key)return Response.json({error:'실거래 조회 기능을 사용할 수 없습니다.'},{status:503});
  const token=request.headers.get('authorization');
  if(!token?.startsWith('Bearer '))return Response.json({error:'로그인이 필요합니다.'},{status:401});
- const db=createClient(url,anon,{global:{headers:{Authorization:token}},auth:{persistSession:false,autoRefreshToken:false}});
+ const db=createClient(url,anon,{db:{schema:'app'},global:{headers:{Authorization:token}},auth:{persistSession:false,autoRefreshToken:false}});
  const {data:{user},error}=await db.auth.getUser(token.slice(7));
  if(error||!user)return Response.json({error:'로그인을 다시 해 주세요.'},{status:401});
  try {

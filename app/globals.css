@@ -21,6 +21,7 @@
 .property-area{display:grid;gap:10px}
 
 .message,.notice{white-space:pre-line;overflow-wrap:anywhere}
+.month-picker{position:relative}.month-picker details{position:relative}.month-picker summary{list-style:none;display:flex;align-items:center;gap:8px;width:100%;min-height:43px;padding:10px 12px;border:1px solid #dce3ed;border-radius:7px;background:#fff;font-weight:400;cursor:pointer}.month-picker summary::-webkit-details-marker{display:none}.month-calendar{position:absolute;z-index:40;top:calc(100% + 6px);left:0;width:min(280px,calc(100vw - 70px));padding:12px;background:#fff;border:1px solid #dce3ed;border-radius:10px;box-shadow:0 12px 35px #172c5824}.month-calendar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}.month-calendar-head button{width:34px;height:34px;border-radius:7px}.month-calendar-head button:hover{background:#f1f5fd}.month-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.month-grid button{padding:8px 5px;border-radius:6px;font-size:13px}.month-grid button:hover:not(:disabled){background:#edf3ff;color:var(--blue)}.month-grid button.selected{background:var(--blue);color:#fff;font-weight:600}
 
 .filters{flex-wrap:wrap}.chart-basis{margin:0;padding:0 25px;color:#65748d;font-size:12px}.chart .empty{height:100%;padding:20px;justify-content:center}.chart .empty p{max-width:620px}
 .chart-tabs button{min-width:96px}

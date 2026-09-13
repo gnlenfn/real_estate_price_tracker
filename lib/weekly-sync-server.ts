@@ -11,19 +11,19 @@ export class SyncAlreadyRunningError extends Error{}
 export async function runWeeklyTradeSync(trigger:'cron'|'manual',options?:{retryOf?:string;actorId?:string}){
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,secret=process.env.SUPABASE_SECRET_KEY,molitKey=process.env.MOLIT_API_KEY;
  if(!url||!secret||!molitKey)throw new Error('Weekly sync configuration is incomplete');
- const db=createClient(url,secret,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+ const db=createClient(url,secret,{db:{schema:'app'},auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}),adminDb=db.schema('admin');
  const staleBefore=new Date(Date.now()-15*60*1000).toISOString();
- await db.from('trade_sync_runs').update({status:'failed',finished_at:new Date().toISOString(),failure_count:1,failures:[{name:'자동수집',month:'',propertyId:''}]}).eq('status','running').lt('started_at',staleBefore);
+ await adminDb.from('trade_sync_runs').update({status:'failed',finished_at:new Date().toISOString(),failure_count:1,failures:[{name:'자동수집',month:'',propertyId:''}]}).eq('status','running').lt('started_at',staleBefore);
  let targets:ReturnType<typeof retryTargets>|undefined,failureScope:'targets'|'run'='targets';
  if(options?.retryOf){
-  const {data:original,error}=await db.from('trade_sync_runs').select('id,status,failures,failure_scope').eq('id',options.retryOf).maybeSingle();
+  const {data:original,error}=await adminDb.from('trade_sync_runs').select('id,status,failures,failure_scope').eq('id',options.retryOf).maybeSingle();
   if(error)throw error;
   if(!original||original.status==='success')throw new Error('RETRY_NOT_ALLOWED');
   if(original.failure_scope==='run')throw new Error('RETRY_SCOPE_UNAVAILABLE');
   targets=retryTargets(original.failures);
   if(!targets.length)throw new Error('RETRY_NOT_ALLOWED');
  }
- const {data:run,error:runError}=await db.from('trade_sync_runs').insert({trigger,status:'running',retry_of:options?.retryOf||null,actor_id:options?.actorId||null,failure_scope:failureScope}).select('id,request_id,started_at').single();
+ const {data:run,error:runError}=await adminDb.from('trade_sync_runs').insert({trigger,status:'running',retry_of:options?.retryOf||null,actor_id:options?.actorId||null,failure_scope:failureScope}).select('id,request_id,started_at').single();
  if(runError){if(runError.code==='23505')throw new SyncAlreadyRunningError('Sync is already running');throw runError;}
  await appendAdminEvent(db,{actorId:options?.actorId||null,action:'sync.start',targetId:run.id,requestId:run.request_id,outcome:'success'});
  try{
@@ -47,13 +47,13 @@ export async function runWeeklyTradeSync(trigger:'cron'|'manual',options?:{retry
   const total=targets?targets.length-skippedCount:selectedProperties.length*months.length,status=summary.failures.length===0?'success':summary.completed===0&&total>0?'failed':'partial';
   const failures=safeSyncFailures(summary.failures);
   const finishedAt=new Date().toISOString();
-  const {error:updateError}=await db.from('trade_sync_runs').update({status,finished_at:finishedAt,property_count:selectedProperties.length,completed_count:summary.completed,saved_records:summary.savedRecords,failure_count:failures.length,failures,skipped_count:skippedCount}).eq('id',run.id);
+  const {error:updateError}=await adminDb.from('trade_sync_runs').update({status,finished_at:finishedAt,property_count:selectedProperties.length,completed_count:summary.completed,saved_records:summary.savedRecords,failure_count:failures.length,failures,skipped_count:skippedCount}).eq('id',run.id);
   if(updateError)throw updateError;
   if(summary.failures.length)logServerError('trade-sync.items',run.request_id,new Error(summary.failures.map(item=>`${item.propertyId}/${item.month}: ${item.message}`).join('; ')),{runId:run.id,failureCount:summary.failures.length});
   await appendAdminEvent(db,{actorId:options?.actorId||null,action:'sync.finish',targetId:run.id,requestId:run.request_id,outcome:status==='failed'?'failed':'success'});
   return {id:run.id,requestId:run.request_id,trigger,status,startedAt:run.started_at,finishedAt,properties:selectedProperties.length,completed:summary.completed,savedRecords:summary.savedRecords,failures,skippedCount,retryOf:options?.retryOf||null};
  }catch(error){
-  await db.from('trade_sync_runs').update({status:'failed',finished_at:new Date().toISOString(),failure_count:1,failure_scope:'run',failures:[{name:'자동수집',month:'',propertyId:''}]}).eq('id',run.id);
+  await adminDb.from('trade_sync_runs').update({status:'failed',finished_at:new Date().toISOString(),failure_count:1,failure_scope:'run',failures:[{name:'자동수집',month:'',propertyId:''}]}).eq('id',run.id);
   await appendAdminEvent(db,{actorId:options?.actorId||null,action:'sync.finish',targetId:run.id,requestId:run.request_id,outcome:'failed'});
   logServerError('trade-sync.run',run.request_id,error,{runId:run.id,trigger});
   throw error;

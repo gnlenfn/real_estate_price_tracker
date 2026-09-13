@@ -10,7 +10,7 @@ export class AdminAccessError extends Error{
 export async function requireAdmin(request:Request){
  let session:Awaited<ReturnType<typeof supportServer>>;
  try{session=await supportServer(request);}catch{throw new AdminAccessError('unauthorized');}
- const {data,error}=await session.admin.from('app_admins').select('user_id').eq('user_id',session.user.id).maybeSingle();
+ const {data,error}=await session.admin.schema('admin').from('admins').select('user_id').eq('user_id',session.user.id).maybeSingle();
  if(error)throw error;
  if(!data)throw new AdminAccessError('forbidden');
  return session;
