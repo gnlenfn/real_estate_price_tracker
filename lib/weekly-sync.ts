@@ -1,5 +1,6 @@
 import {matchTrades} from './molit';
 import type {Property} from './model';
+import {TRADE_SYNC_CONCURRENCY} from './sync-concurrency';
 
 export type ScheduledProperty=Property&{user_id:string};
 export type ScheduledFailure={propertyId:string;name:string;month:string;message:string};
@@ -18,7 +19,7 @@ export async function runScheduledSync(
  months:string[],
  loadDistrict:(district:string,month:string)=>Promise<Record<string,string>[]>,
  saveMonth:(property:ScheduledProperty,month:string,rows:ReturnType<typeof matchTrades>)=>Promise<void>,
- concurrency=4,
+ concurrency=TRADE_SYNC_CONCURRENCY,
  allowedPairs?:Set<string>,
 ):Promise<ScheduledSummary>{
  const groups=new Map<string,{district:string;month:string;properties:ScheduledProperty[]}>();

@@ -1,5 +1,6 @@
 import {areaGroup} from './area';
 import type {Property} from './model';
+import {TRADE_SYNC_CONCURRENCY} from './sync-concurrency';
 export type SyncResult={id:string;name:string;area:number;count:number;completed:number;failures:{month:string;message:string}[]};
 export function syncMonths(start:string,end:string){
  const valid=(v:string)=>/^\d{4}-(0[1-9]|1[0-2])$/.test(v);
@@ -23,7 +24,7 @@ export async function runTradeSync(properties:Property[],months:string[],request
   }
  }
  // A bounded pool avoids flooding the provider and waits for all in-flight saves.
- await Promise.all(Array.from({length:Math.min(4,jobs.length)},()=>worker()));
+ await Promise.all(Array.from({length:Math.min(TRADE_SYNC_CONCURRENCY,jobs.length)},()=>worker()));
  if(stopped||!active())throw new Error('로그인 계정이 변경되어 조회를 중단했습니다.');
  for(const row of results)row.failures.sort((a,b)=>a.month.localeCompare(b.month));
  return results;

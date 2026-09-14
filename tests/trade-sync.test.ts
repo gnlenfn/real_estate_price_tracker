@@ -18,26 +18,26 @@ test('account change stops the remaining requests',async()=>{
  assert.equal(calls,1);
 });
 
-test('bulk requests overlap with a cap of four and settle out of order without losing results',async()=>{
- const properties=demoData().properties.slice(0,2),months=['2026-01','2026-02','2026-03'];
+test('bulk requests overlap with a cap of ten and settle out of order without losing results',async()=>{
+ const properties=demoData().properties.slice(0,2),months=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'];
  let running=0,peak=0;
  const calls:string[]=[],pending:(()=>void)[]=[],progress:string[]=[];
  const resultPromise=runTradeSync(properties,months,(id,month)=>new Promise<number>((resolve,reject)=>{
   calls.push(`${id}:${month}`);running++;peak=Math.max(peak,running);
   pending.push(()=>{running--;if(month==='2026-02')reject(new Error('일시 오류'));else resolve(2);});
  }),label=>progress.push(label));
- assert.equal(calls.length,4);assert.equal(running,4);
+ assert.equal(calls.length,10);assert.equal(running,10);
  while(pending.length){pending.pop()!();await new Promise<void>(resolve=>setImmediate(resolve));}
  const results=await resultPromise;
- assert.equal(peak,4);assert.equal(running,0);assert.equal(new Set(calls).size,6);
- for(const result of results){assert.equal(result.count,4);assert.equal(result.completed,2);assert.equal(result.failures[0].month,'2026-02');}
- assert.equal(progress.at(-1),'6/6 완료 · 0건 조회 중…');
+ assert.equal(peak,10);assert.equal(running,0);assert.equal(new Set(calls).size,12);
+ for(const result of results){assert.equal(result.count,10);assert.equal(result.completed,5);assert.equal(result.failures[0].month,'2026-02');}
+ assert.equal(progress.at(-1),'12/12 완료 · 0건 조회 중…');
 });
 test('account change waits for in-flight work and does not schedule new jobs',async()=>{
  let active=true,calls=0;const pending:(()=>void)[]=[];
- const operation=runTradeSync(demoData().properties,['2026-01','2026-02'],()=>new Promise<number>(resolve=>{calls++;pending.push(()=>resolve(1));}),()=>{},()=>active);
- assert.equal(calls,4);active=false;
+ const operation=runTradeSync(demoData().properties,['2026-01','2026-02','2026-03'],()=>new Promise<number>(resolve=>{calls++;pending.push(()=>resolve(1));}),()=>{},()=>active);
+ assert.equal(calls,10);active=false;
  pending.forEach(resolve=>resolve());
  await assert.rejects(operation,/계정이 변경/);
- assert.equal(calls,4);
+ assert.equal(calls,10);
 });

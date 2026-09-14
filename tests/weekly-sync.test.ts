@@ -20,3 +20,15 @@ test('one district failure is reported without stopping other districts',async()
  const summary=await runScheduledSync(properties,['2026-09'],async district=>{if(district==='11440')throw new Error('provider down');return [];},async()=>{});
  assert.equal(summary.completed,1);assert.equal(summary.failures.length,1);assert.equal(summary.failures[0].propertyId,'a');
 });
+
+test('scheduled collection runs at most ten district-month requests concurrently',async()=>{
+ const properties=Array.from({length:12},(_,index)=>({...base,id:`p${index}`,district:String(11000+index)}));
+ let running=0,peak=0;const pending:(()=>void)[]=[];
+ const operation=runScheduledSync(properties,['2026-09'],()=>new Promise(resolve=>{
+  running++;peak=Math.max(peak,running);pending.push(()=>{running--;resolve([]);});
+ }),async()=>{});
+ assert.equal(running,10);
+ while(pending.length){pending.pop()!();await new Promise<void>(resolve=>setImmediate(resolve));}
+ await operation;
+ assert.equal(peak,10);
+});
