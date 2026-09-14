@@ -17,7 +17,7 @@ export async function requireAdmin(request:Request){
 }
 
 export async function requireSuperAdmin(request:Request){
- const session=await requireAdmin(request),{data,error}=await session.admin.schema('admin').rpc('is_super_admin');
+ const session=await requireAdmin(request),{data,error}=await session.auth.schema('admin').rpc('is_super_admin');
  if(error)throw error;if(!data)throw new AdminAccessError('forbidden');return session;
 }
 
