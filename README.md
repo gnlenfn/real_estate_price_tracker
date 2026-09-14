@@ -154,7 +154,7 @@ npm run build
 
 문의는 앱의 비공개 문의함에 먼저 저장됩니다. 관리자는 `/admin/login`으로 로그인해 `/admin/support`에서 대화와 첨부 이미지를 확인하고 답변합니다. 개발 작업이 필요한 문의만 검토 후 GitHub Issue로 전환합니다. Vercel에 서버 전용 `GITHUB_ISSUES_TOKEN`을 추가하고, Fine-grained token에는 해당 저장소의 **Issues: Read and write** 권한만 부여합니다. 다른 저장소를 쓰려면 `GITHUB_ISSUES_REPOSITORY=소유자/저장소`를 설정합니다.
 
-관리자 계정은 Supabase Authentication → Users에서 이메일·비밀번호 사용자로 만든 뒤 SQL Editor에서 `insert into admin.admins(user_id) values ('관리자 사용자 UUID');`를 실행해 등록합니다. 일반 소셜 로그인 사용자는 관리자 경로에 접근할 수 없습니다. `/admin`에서는 미답변 문의와 예약 수집 상태를 확인하고, `/admin/sync`에서는 전체 수동 실행과 실패한 단지·월만 재시도할 수 있습니다. `/admin/support`의 내부 메모는 사용자에게 공개되지 않으며, 사용자 조회·연동 점검·관리자 활동 기록은 각각 별도 메뉴에서 확인합니다.
+최초 최고 관리자 계정은 Supabase Authentication → Users에서 이메일·비밀번호 사용자로 만든 뒤 SQL Editor에서 `insert into admin.admins(user_id, role) values ('관리자 사용자 UUID', 'super_admin');`를 실행해 등록합니다. 최고 관리자는 한 명만 존재하며 `/admin/admins`에서 이미 Google 또는 Kakao로 가입한 사용자를 일반 관리자로 추가·해제하거나 최고 관리자 권한을 이전합니다. 일반 관리자는 기존 운영 기능을 사용하지만 관리자 권한은 변경할 수 없습니다. 로컬에서는 `.env.local`의 `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`를 설정하고 `/admin/login`의 로컬 버튼으로 동일한 최고 관리자 계정을 재사용합니다.
 
 Supabase Data API의 **Exposed schemas**에는 `app`, `support`, `admin`을 추가합니다. 브라우저용 Supabase 클라이언트는 `app`을 기본 스키마로 사용하고, 문의 데이터는 `support`, 서버의 운영 기능은 `admin`을 명시해서 접근합니다. `SUPABASE_SECRET_KEY`는 서버 환경변수로만 설정하며 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
 

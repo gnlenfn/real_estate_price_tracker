@@ -1,2 +1,2 @@
--- Local development starts empty. Create an isolated anonymous development
--- account from the app's local login screen.
+-- Local development starts empty. The app creates and reuses the account in
+-- LOCAL_ADMIN_EMAIL when "로컬 최고 관리자로 시작" is selected.

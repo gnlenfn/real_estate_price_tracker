@@ -16,6 +16,11 @@ export async function requireAdmin(request:Request){
  return session;
 }
 
+export async function requireSuperAdmin(request:Request){
+ const session=await requireAdmin(request),{data,error}=await session.admin.schema('admin').rpc('is_super_admin');
+ if(error)throw error;if(!data)throw new AdminAccessError('forbidden');return session;
+}
+
 export function adminAccessResponse(error:unknown){
  if(!(error instanceof AdminAccessError))return null;
  return Response.json({error:error.kind==='unauthorized'?'로그인이 필요합니다.':'운영자 권한이 필요합니다.'},{status:error.kind==='unauthorized'?401:403});

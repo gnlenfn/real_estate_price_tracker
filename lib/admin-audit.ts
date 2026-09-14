@@ -2,7 +2,7 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 
 export type AdminEvent={
  actorId:string|null;
- action:'support.reply'|'support.note'|'support.status'|'github.transfer'|'sync.start'|'sync.finish';
+ action:'support.reply'|'support.note'|'support.status'|'github.transfer'|'sync.start'|'sync.finish'|'admin.grant'|'admin.revoke'|'admin.transfer';
  targetId:string;
  requestId:string;
  outcome:'success'|'failed'|'unknown';
