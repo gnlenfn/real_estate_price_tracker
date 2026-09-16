@@ -33,7 +33,12 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { areaGroup } from "@/lib/area";
-import { runTradeSync, syncMonths, syncSummary } from "@/lib/trade-sync";
+import {
+  currentKoreaMonth,
+  runTradeSync,
+  syncMonths,
+  syncSummary,
+} from "@/lib/trade-sync";
 import { PropertyAddress } from "@/app/components/property-address";
 import { MonthPicker } from "@/app/components/month-picker";
 import { ProfileSettings } from "@/app/components/profile-settings";
@@ -53,6 +58,13 @@ import {
   chartAvailability,
 } from "@/lib/model";
 import { filterRecords } from "@/lib/record-filter";
+import {
+  bulkTradeLabel,
+  executeBulkTradeReload,
+  reconcileSelectedPropertyIds,
+  selectableBulkProperties,
+  toggleSelectedPropertyId,
+} from "@/lib/bulk-trade";
 import {
   propertyRegionLabel,
   regionOptions,
@@ -82,12 +94,15 @@ export default function Page() {
   const [recordProperty, setRecordProperty] = useState("all"),
     [recordQuery, setRecordQuery] = useState(""),
     [recordYears, setRecordYears] = useState<number | null>(1);
-  const [modal, setModal] = useState<"property" | "record" | null>(null),
+  const [modal, setModal] = useState<
+      "property" | "record" | "bulk-trade" | null
+    >(null),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [editing, setEditing] = useState<Property | null>(null),
     [target, setTarget] = useState(""),
-    [recordMode, setRecordMode] = useState<"manual" | "trade">("manual");
+    [recordMode, setRecordMode] = useState<"manual" | "trade">("manual"),
+    [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
   const dialog = useRef<HTMLDialogElement>(null);
   const account = useRef<string | null>(null);
   const loadVersion = useRef(0);
@@ -222,6 +237,18 @@ export default function Page() {
       ),
     [data.properties, regionId],
   );
+  const selectableProperties = useMemo(
+    () => selectableBulkProperties(data.properties, regionId),
+    [data.properties, regionId],
+  );
+  const selectedProperties = useMemo(
+    () =>
+      selectableProperties.filter((property) =>
+        selectedPropertyIds.includes(property.id),
+      ),
+    [selectableProperties, selectedPropertyIds],
+  );
+  const bulkTradeModal = modal === "bulk-trade";
   const watchProperties = useMemo(
     () =>
       visibleProperties
@@ -308,6 +335,11 @@ export default function Page() {
     if (!watchProperties.some((p) => p.id === selected))
       setSelected(watchProperties[0]?.id || "");
   }, [watchProperties, selected]);
+  useEffect(() => {
+    setSelectedPropertyIds((ids) =>
+      reconcileSelectedPropertyIds(data.properties, regionId, ids),
+    );
+  }, [data.properties, regionId]);
   const recent = useMemo(
     () =>
       filterRecords(data, {
@@ -354,6 +386,22 @@ export default function Page() {
       }
       return [...ids, id];
     });
+  }
+  function togglePropertySelection(id: string) {
+    setSelectedPropertyIds((ids) => toggleSelectedPropertyId(ids, id));
+  }
+  function toggleAllProperties() {
+    const visibleIds = selectableProperties.map((property) => property.id);
+    setSelectedPropertyIds((ids) =>
+      visibleIds.length > 0 && visibleIds.every((id) => ids.includes(id))
+        ? []
+        : visibleIds,
+    );
+  }
+  function openBulkTradeReload() {
+    if (!selectedProperties.length) return;
+    setModal("bulk-trade");
+    setMessage("");
   }
   function open(which: typeof modal, p?: Property) {
     setEditing(p || null);
@@ -410,7 +458,7 @@ export default function Page() {
         isEditing,
         String(f.get("start")),
         String(f.get("end")),
-        today().slice(0, 7),
+        currentKoreaMonth(),
       );
       if (mode === "cloud" && supabase) {
         const { error } = await supabase
@@ -562,6 +610,56 @@ export default function Page() {
       await refresh();
       if (account.current === owner) {
         setKind("trade");
+        setModal(null);
+        setMessage(syncSummary(results));
+      }
+    });
+  }
+  async function reloadSelectedTrades(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    await action(async () => {
+      if (mode !== "cloud" || !supabase || !session)
+        throw new Error("실거래가는 로그인 후 다시 조회할 수 있습니다.");
+      if (!selectedProperties.length)
+        throw new Error("조회할 부동산을 선택해 주세요.");
+      const selectedMonths = syncMonths(
+          String(f.get("bulk-start")),
+          String(f.get("bulk-end")),
+        ),
+        properties = [...selectedProperties],
+        client = supabase,
+        owner = session.user.id;
+      setMessage(`${bulkTradeLabel(properties, selectedMonths)} 조회 준비 중…`);
+      const results = await executeBulkTradeReload({
+        properties,
+        months: selectedMonths,
+        request: async (propertyId, month) => {
+          const {
+            data: { session: s },
+          } = await client.auth.getSession();
+          if (!s || s.user.id !== owner)
+            throw new Error("로그인을 다시 해 주세요.");
+          const res = await fetch("/api/trades", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${s.access_token}`,
+            },
+            body: JSON.stringify({ propertyId, month }),
+            signal: AbortSignal.timeout(65000),
+          });
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || "조회에 실패했습니다.");
+          return result.count as number;
+        },
+        progress: setMessage,
+        active: () => account.current === owner,
+        refresh,
+      });
+      if (account.current === owner) {
+        setKind("trade");
+        setSelectedPropertyIds([]);
         setModal(null);
         setMessage(syncSummary(results));
       }
@@ -1272,6 +1370,33 @@ export default function Page() {
                   </button>
                 </div>
               </div>
+              <div className="property-bulk-toolbar">
+                <div>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={!selectableProperties.length || busy}
+                    onClick={toggleAllProperties}
+                  >
+                    {selectableProperties.length > 0 &&
+                    selectableProperties.every((property) =>
+                      selectedPropertyIds.includes(property.id),
+                    )
+                      ? "전체 선택 해제"
+                      : "전체 선택"}
+                  </button>
+                  <span>{selectedProperties.length}곳 선택</span>
+                </div>
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={!selectedProperties.length || busy}
+                  onClick={openBulkTradeReload}
+                  aria-label={`전체 다시 조회 (${selectedProperties.length}곳)`}
+                >
+                  전체 다시 조회
+                </button>
+              </div>
               <div className="property-list">
                 {!visibleProperties.length && (
                   <div className="empty">보유 부동산부터 추가해 보세요.</div>
@@ -1286,6 +1411,15 @@ export default function Page() {
                   )
                   .map((p) => (
                   <div className="property-row" key={p.id}>
+                    <label className="property-selection">
+                      <input
+                        type="checkbox"
+                        aria-label={`${p.name} 선택`}
+                        checked={selectedPropertyIds.includes(p.id)}
+                        disabled={busy}
+                        onChange={() => togglePropertySelection(p.id)}
+                      />
+                    </label>
                     <div className="building-icon">
                       <Building2 />
                     </div>
@@ -1309,9 +1443,12 @@ export default function Page() {
                     <div className="row-actions">
                       <button
                         className="button"
-                        onClick={() => open("record", p)}
+                        onClick={() => {
+                          open("record", p);
+                          setRecordMode("trade");
+                        }}
                       >
-                        가격 기록
+                        가격 조회
                       </button>
                       <button
                         className="button"
@@ -1540,6 +1677,8 @@ export default function Page() {
                 : "새 단지 추가"
               : modal === "record"
                 ? "가격 기록하기"
+                : bulkTradeModal
+                  ? "선택 부동산 전체 다시 조회"
                 : "내 계정으로 로그인"}
           </h2>
           <button
@@ -1576,8 +1715,8 @@ export default function Page() {
                       name="start"
                       disabled={busy}
                       min="2006-01"
-                      max={today().slice(0, 7)}
-                      defaultValue={`${today().slice(0, 4)}-01`}
+                      max={currentKoreaMonth()}
+                      defaultValue={`${currentKoreaMonth().slice(0, 4)}-01`}
                     />
                   </label>
                   <label>
@@ -1586,8 +1725,8 @@ export default function Page() {
                       name="end"
                       disabled={busy}
                       min="2006-01"
-                      max={today().slice(0, 7)}
-                      defaultValue={today().slice(0, 7)}
+                      max={currentKoreaMonth()}
+                      defaultValue={currentKoreaMonth()}
                     />
                   </label>
                 </div>
@@ -1722,8 +1861,8 @@ export default function Page() {
                       name="start"
                       disabled={busy}
                       min="2006-01"
-                      max={today().slice(0, 7)}
-                      defaultValue={`${today().slice(0, 4)}-01`}
+                      max={currentKoreaMonth()}
+                      defaultValue={`${currentKoreaMonth().slice(0, 4)}-01`}
                     />
                   </label>
                   <label>
@@ -1732,8 +1871,8 @@ export default function Page() {
                       name="end"
                       disabled={busy}
                       min="2006-01"
-                      max={today().slice(0, 7)}
-                      defaultValue={today().slice(0, 7)}
+                      max={currentKoreaMonth()}
+                      defaultValue={currentKoreaMonth()}
                     />
                   </label>
                 </div>
@@ -1751,6 +1890,57 @@ export default function Page() {
               </form>
             )}
           </>
+        ) : bulkTradeModal ? (
+          <form onSubmit={reloadSelectedTrades}>
+            <div className="bulk-trade-summary">
+              <strong>선택한 부동산 {selectedProperties.length}곳</strong>
+              <ul>
+                {selectedProperties.map((property) => (
+                  <li key={property.id}>
+                    {property.name} · {propertyRegionLabel(property)} · 전용{" "}
+                    {areaGroup(property.area)}㎡
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="form-row">
+              <label>
+                조회 시작 월
+                <MonthPicker
+                  name="bulk-start"
+                  disabled={busy}
+                  min="2006-01"
+                  max={currentKoreaMonth()}
+                  defaultValue={`${currentKoreaMonth().slice(0, 4)}-01`}
+                />
+              </label>
+              <label>
+                종료 월
+                <MonthPicker
+                  name="bulk-end"
+                  disabled={busy}
+                  min="2006-01"
+                  max={currentKoreaMonth()}
+                  defaultValue={currentKoreaMonth()}
+                />
+              </label>
+            </div>
+            <p className="muted">
+              기존 가격 기록은 유지되며, 선택 기간의 실거래가를 추가하거나
+              최신 정보로 갱신합니다.
+            </p>
+            {mode !== "cloud" && (
+              <p className="notice">
+                실거래가를 다시 조회하려면 로그인해 주세요.
+              </p>
+            )}
+            <button
+              className="button primary full"
+              disabled={busy || mode !== "cloud"}
+            >
+              {busy ? "조회 중…" : "선택 기간 전체 다시 조회"}
+            </button>
+          </form>
         ) : null}
         {message && modal && (
           <div role="status" className="notice">

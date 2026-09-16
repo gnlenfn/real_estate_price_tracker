@@ -1,6 +1,7 @@
 import {createClient} from '@supabase/supabase-js';
 import {fetchTrades} from '@/lib/molit';
 import {serverError} from '@/lib/api-error';
+import {isTradeMonthAllowed} from '@/lib/trade-sync';
 export const maxDuration=60;
 export async function POST(request:Request) {
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,anon=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,key=process.env.MOLIT_API_KEY;
@@ -12,7 +13,7 @@ export async function POST(request:Request) {
  if(error||!user)return Response.json({error:'로그인을 다시 해 주세요.'},{status:401});
  try {
  const body=await request.json();
- if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(body.month)||body.month<'2006-01'||body.month>new Date().toISOString().slice(0,7))return Response.json({error:'조회 월을 확인해 주세요.'},{status:400});
+ if(!isTradeMonthAllowed(body.month))return Response.json({error:'조회 월을 확인해 주세요.'},{status:400});
  const {data:property,error:pe}=await db.from('properties').select('*').eq('id',body.propertyId).single();
  if(pe||!property)return Response.json({error:'단지를 찾을 수 없습니다.'},{status:404});
  const records=await fetchTrades(property,body.month,key);

@@ -1,11 +1,22 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {runTradeSync,syncMonths,syncSummary} from '../lib/trade-sync';
+import {currentKoreaMonth,isTradeMonthAllowed,runTradeSync,syncMonths,syncSummary} from '../lib/trade-sync';
 import {demoData} from '../lib/model';
 test('sync spans year boundaries inclusively and rejects reversed months',()=>{
  assert.deepEqual(syncMonths('2025-12','2026-02'),['2025-12','2026-01','2026-02']);
  assert.throws(()=>syncMonths('2026-02','2026-01'));
  assert.throws(()=>syncMonths('2026-00','2026-02'));
+});
+test('sync rejects a month after the current Korea month',()=>{
+ const now=new Date(),korea=new Date(now.getTime()+9*60*60*1000),year=korea.getUTCFullYear(),month=korea.getUTCMonth()+1;
+ const futureMonth=month===12?`${year+1}-01`:`${year}-${String(month+1).padStart(2,'0')}`;
+ assert.throws(()=>syncMonths(futureMonth,futureMonth),/조회 기간/);
+});
+test('Korea month validation crosses the UTC month boundary consistently',()=>{
+ const koreaSeptember=new Date('2026-08-31T15:30:00.000Z');
+ assert.equal(currentKoreaMonth(koreaSeptember),'2026-09');
+ assert.equal(isTradeMonthAllowed('2026-09',koreaSeptember),true);
+ assert.equal(isTradeMonthAllowed('2026-10',koreaSeptember),false);
 });
 test('bulk sync continues after a month failure and retains per-property results',async()=>{
  const properties=demoData().properties.slice(0,2),calls:string[]=[];

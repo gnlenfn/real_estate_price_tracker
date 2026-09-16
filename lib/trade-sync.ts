@@ -2,9 +2,15 @@ import {areaGroup} from './area';
 import type {Property} from './model';
 import {TRADE_SYNC_CONCURRENCY} from './sync-concurrency';
 export type SyncResult={id:string;name:string;area:number;count:number;completed:number;failures:{month:string;message:string}[]};
+export function currentKoreaMonth(now=new Date()){
+ const korea=new Date(now.getTime()+9*60*60*1000);
+ return `${korea.getUTCFullYear()}-${String(korea.getUTCMonth()+1).padStart(2,'0')}`;
+}
+export function isTradeMonthAllowed(month:string,now=new Date()){
+ return /^\d{4}-(0[1-9]|1[0-2])$/.test(month)&&month>='2006-01'&&month<=currentKoreaMonth(now);
+}
 export function syncMonths(start:string,end:string){
- const valid=(v:string)=>/^\d{4}-(0[1-9]|1[0-2])$/.test(v);
- if(!valid(start)||!valid(end)||start>end||start<'2006-01')throw new Error('조회 기간을 확인해 주세요.');
+ if(!isTradeMonthAllowed(start)||!isTradeMonthAllowed(end)||start>end)throw new Error('조회 기간을 확인해 주세요.');
  const serial=(v:string)=>Number(v.slice(0,4))*12+Number(v.slice(5))-1;
  return Array.from({length:serial(end)-serial(start)+1},(_,i)=>{const n=serial(start)+i;return `${Math.floor(n/12)}-${String(n%12+1).padStart(2,'0')}`;});
 }
