@@ -1093,7 +1093,12 @@ export default function Page() {
                         />
                         <Tooltip
                           labelFormatter={(_l, p) => p[0]?.payload?.month || ""}
-                          formatter={(v) => money(Number(v))}
+                          formatter={(v) => {
+                            const value = Number(v);
+                            return chart === "gap"
+                              ? `${money(value)} 차이`
+                              : money(value);
+                          }}
                           contentStyle={{
                             border: "1px solid #e5e9f1",
                             borderRadius: 12,
