@@ -43,16 +43,19 @@ export function series(data: Data, baseId: string, kind: Kind, periods: number, 
  return rows;
 }
 export function demoData(): Data {
- const properties:Property[]=[{id:'home',name:'마포래미안푸르지오',district:'11440',dong:'아현동',area:84.9,owned:true,color:colors[0]},{id:'p1',name:'공덕자이',district:'11440',dong:'아현동',area:84.9,owned:false,color:colors[1]},{id:'p2',name:'신촌그랑자이',district:'11440',dong:'대흥동',area:84.9,owned:false,color:colors[2]},{id:'p3',name:'래미안웰스트림',district:'11440',dong:'현석동',area:84.9,owned:false,color:colors[3]}];
+ const properties:Property[]=[{id:'home',name:'마포래미안푸르지오',district:'11440',dong:'아현동',area:84.9,owned:true,color:colors[0],road_address:'서울특별시 마포구 마포대로 195'},{id:'p1',name:'공덕자이',district:'11440',dong:'아현동',area:84.9,owned:false,color:colors[1],road_address:'서울특별시 마포구 마포대로 92'},{id:'p2',name:'신촌그랑자이',district:'11440',dong:'대흥동',area:84.9,owned:false,color:colors[2],road_address:'서울특별시 마포구 대흥로 175'},{id:'p3',name:'래미안웰스트림',district:'11440',dong:'현석동',area:84.9,owned:false,color:colors[3],road_address:'서울특별시 마포구 독막로 246'}];
  const records:Record[]=[]; const now=new Date();
  for(let i=35;i>=0;i--) { const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-i,15)); if(d>now)d.setUTCDate(1); properties.forEach((p,j)=>{ const price=Math.round((135000+j*18000+(35-i)*(850+j*90)+Math.sin(i*.6+j)*3500)/100)*100;
  for(const kind of supportedKinds) records.push({id:`demo-${i}-${j}-${kind}`,property_id:p.id,date:d.toISOString().slice(0,10),price:price+(kind==='estimate'?2000:0),kind,source:'예시 데이터',note:'화면 체험을 위한 가상 가격입니다.'}); }); }
  return {properties,records};
 }
 
-export function chartAvailability(data:Data,rows:ReturnType<typeof series>,baseId:string,kind:Kind,baseKind:Kind,chart:'gap'|'price'){
+export function chartAvailability(data:Data,rows:ReturnType<typeof series>,baseId:string,kind:Kind,baseKind:Kind,chart:'gap'|'price',selectedComparisonPropertyIds?:string[]){
  const hasValue=(id:string)=>rows.some(row=>typeof row[id]==='number'&&Number.isFinite(row[id]));
- const visible=data.properties.filter(p=>chart==='price'||(p.id!==baseId&&!p.owned));
+ const selected=selectedComparisonPropertyIds&&new Set(selectedComparisonPropertyIds);
+ const visible=selected
+  ? data.properties.filter(p=>p.id===baseId||selected.has(p.id))
+  : data.properties.filter(p=>chart==='price'||(p.id!==baseId&&!p.owned));
  if(visible.some(p=>hasValue(chart==='gap'?`gap_${p.id}`:p.id)))return null;
  if(!data.records.length)return '아직 가격 기록이 없습니다. 실거래를 불러오거나 가격을 직접 기록해 주세요.';
  if(chart==='gap'&&!hasValue(baseId))return `선택한 기간에 기준 부동산의 ${labels[baseKind]} 기록이 없습니다. 기준 가격 종류를 바꾸거나 기록을 추가해 주세요.`;

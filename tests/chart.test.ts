@@ -30,6 +30,16 @@ test('missing chosen kind is explained even when other records exist',()=>{
  assert.match(chartAvailability(data,rows,'home','asking','asking','gap')!,/호가 기록이 없습니다/);
 });
 
+test('chart availability only considers the selected comparison properties',()=>{
+ const selected:Data={properties:[
+  {...properties[0]},
+  {...properties[1],id:'hidden',name:'숨긴 관심 단지'},
+  {...properties[1],id:'shown',name:'표시할 관심 단지'},
+ ],records:[record,{...record,id:'hidden-trade',property_id:'hidden',kind:'trade',price:150000}]};
+ const rows=series(selected,'home','trade',2,new Date('2026-09-12'),'estimate');
+ assert.match(chartAvailability(selected,rows,'home','trade','estimate','gap',['shown'])!,/가격 변화가 없습니다/);
+});
+
 test('weekly series uses Monday boundaries, weekly medians, and latest known values for gaps',()=>{
  const weekly:Data={properties,records:[
   {...record,id:'h0',date:'2026-08-21',price:70000},

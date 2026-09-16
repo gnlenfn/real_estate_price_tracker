@@ -18,6 +18,7 @@ export type ApartmentCandidate={
 };
 
 const compact=(value:string)=>value.replace(/\s+/g,'').toLocaleLowerCase('ko-KR');
+const displayName=(value:string)=>value.trim().replace(/\s*아파트\s*$/,'').trim();
 
 export function apartmentCandidates(documents:KakaoPlaceDocument[],query:string):ApartmentCandidate[]{
  const normalized=compact(query);
@@ -27,7 +28,7 @@ export function apartmentCandidates(documents:KakaoPlaceDocument[],query:string)
   return category.includes('아파트')||compact(String(document.place_name??'')).includes(normalized);
  }).map(document=>({
   id:String(document.id??''),
-  name:String(document.place_name??'').trim(),
+  name:displayName(String(document.place_name??'')),
   address:String(document.address_name??'').trim(),
   roadAddress:String(document.road_address_name??'').trim(),
   x:String(document.x??''),

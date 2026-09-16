@@ -25,3 +25,11 @@ test('record filters sort newest first and include the exact period boundary',()
  const boundary:Data={...data,records:[...data.records,{id:'5',property_id:'watch',date:'2025-09-13',price:140000,kind:'trade',source:'직접 입력',note:''}]};
  assert.deepEqual(filterRecords(boundary,{kind:'trade',propertyId:'all',query:'',years:1,now:new Date('2026-09-13T00:00:00Z')}).map(r=>r.id),['2','4','5']);
 });
+
+test('record filters limit records to the chosen legal district',()=>{
+ const regional:Data={...data,properties:[
+  ...data.properties,
+  {id:'outside',name:'다른 지역 아파트',district:'11680',dong:'역삼동',area:84,owned:false,color:'#f00'},
+ ],records:[...data.records,{id:'outside-record',property_id:'outside',date:'2026-09-03',price:200000,kind:'trade',source:'직접 입력',note:''}]};
+ assert.deepEqual(filterRecords(regional,{kind:'trade',propertyId:'all',query:'',years:null,regionId:'11110'}).map(r=>r.id),['2','4','3']);
+});

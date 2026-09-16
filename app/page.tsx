@@ -1,88 +1,1758 @@
-'use client';
-import {useEffect,useMemo,useRef,useState,FormEvent} from 'react';
-import {AreaChart,Area,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,ReferenceLine} from 'recharts';
-import {ArrowUpRight,ArrowDownRight,ArrowRight,Plus,House,ChartNoAxesCombined,Building2,Settings2,Download,X,Trash2,NotebookPen,LogOut,ChevronRight,Layers,Cloud,Info} from 'lucide-react';
-import {supabase} from '@/lib/supabase';
-import {areaGroup} from '@/lib/area';
-import {runTradeSync,syncMonths,syncSummary} from '@/lib/trade-sync';
-import {PropertyAddress} from '@/app/components/property-address';
-import {MonthPicker} from '@/app/components/month-picker';
-import {ProfileSettings} from '@/app/components/profile-settings';
-import {SupportForm} from '@/app/components/support-form';
-import {Data,Property,Record as PriceRecord,Kind,Interval,colors,demoData,labels,supportedKinds,money,series,chartAvailability} from '@/lib/model';
-import {filterRecords} from '@/lib/record-filter';
-import {profileLabel,type Profile} from '@/lib/profile';
-import {tradeMonthsForNewProperty} from '@/lib/property-create';
-import {reportClientError} from '@/lib/client-error';
-import type {Session} from '@supabase/supabase-js';
-const empty:Data={properties:[],records:[]};
-const today=()=>new Date().toISOString().slice(0,10);
-export default function Page(){
- const [data,setData]=useState<Data>(empty),[ready,setReady]=useState(false),[mode,setMode]=useState<'demo'|'local'|'cloud'>('demo'),[session,setSession]=useState<Session|null>(null),[profile,setProfile]=useState<Profile|null>(null);
- const [tab,setTab]=useState('overview'),[kind,setKind]=useState<Kind>('trade'),[months,setMonths]=useState(12),[interval,setInterval]=useState<Interval>('month'),[base,setBase]=useState('home'),[selected,setSelected]=useState('p1'),[chart,setChart]=useState<'gap'|'price'>('gap');
- const [baseKind,setBaseKind]=useState<Kind|null>(null);
- const [recordProperty,setRecordProperty]=useState('all'),[recordQuery,setRecordQuery]=useState(''),[recordYears,setRecordYears]=useState<number|null>(1);
- const [modal,setModal]=useState<'property'|'record'|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[editing,setEditing]=useState<Property|null>(null),[target,setTarget]=useState(''),[recordMode,setRecordMode]=useState<'manual'|'trade'>('manual');
- const dialog=useRef<HTMLDialogElement>(null);
- const account=useRef<string|null>(null);
- const loadVersion=useRef(0);
- function restoreLocal(){try{const saved=localStorage.getItem('jipgap-local');if(saved){setData(JSON.parse(saved));setMode('local');return;}}catch{}setData(demoData());setMode('demo');}
- async function refresh(){if(!supabase||!account.current)return;const owner=account.current;const version=++loadVersion.current;const profileRequest=supabase.rpc('ensure_profile').single();const p=await supabase.from('properties').select('*').order('name');if(p.error)throw new Error('단지를 불러오지 못했습니다. 연결 설정을 확인해 주세요.');const records:PriceRecord[]=[];for(let offset=0;;offset+=1000){const r=await supabase.from('records').select('*').order('date',{ascending:false}).order('id').range(offset,offset+999);if(r.error)throw new Error('가격 기록을 불러오지 못했습니다. 연결을 확인해 주세요.');records.push(...r.data);if(r.data.length<1000)break;}const profileResult=await profileRequest;if(account.current===owner&&loadVersion.current===version){setData({properties:p.data,records});setProfile(profileResult.error?null:profileResult.data as Profile);}}
- useEffect(()=>{let alive=true;restoreLocal();setReady(true);
- if(!supabase)return;const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,s)=>{if(!alive)return;const changed=account.current!==(s?.user.id||null);account.current=s?.user.id||null;setSession(s);if(changed){loadVersion.current++;setModal(null);setMessage('');setProfile(null);if(s){setMode('cloud');setData(empty);const owner=s.user.id;setTimeout(()=>{if(alive&&account.current===owner)refresh().catch(e=>{if(alive&&account.current===owner)setMessage(e.message);});},0);}else restoreLocal();}});return()=>{alive=false;loadVersion.current++;subscription.unsubscribe();};},[]);
- useEffect(()=>{if(ready&&mode==='local'){try{localStorage.setItem('jipgap-local',JSON.stringify(data));}catch{setMessage('이 브라우저에 저장하지 못했습니다. 백업을 내려받아 주세요.');}}},[data,mode,ready]);
- useEffect(()=>{if(modal)dialog.current?.showModal();else dialog.current?.close();},[modal]);
- useEffect(()=>{const owned=data.properties.filter(p=>p.owned);if(!data.properties.some(p=>p.id===base)||(owned.length>0&&!owned.some(p=>p.id===base))){setBase(owned[0]?.id||data.properties[0]?.id||'');setBaseKind(null);}if(!data.properties.some(p=>p.id===selected&&p.id!==base&&!p.owned))setSelected(data.properties.find(p=>p.id!==base&&!p.owned)?.id||'');},[data.properties,base,selected]);
- const baseProperty=data.properties.find(p=>p.id===base),comparison=data.properties.find(p=>p.id===selected);
- const effectiveBaseKind=baseKind??(!data.records.some(r=>r.property_id===base&&r.kind==='trade')&&data.records.some(r=>r.property_id===base&&r.kind==='estimate')?'estimate':'trade');
- const rows=useMemo(()=>series(data,base,'trade',months,new Date(),effectiveBaseKind,interval),[data,base,months,effectiveBaseKind,interval]);
- const chartEmpty=chartAvailability(data,rows,base,'trade',effectiveBaseKind,chart);
- const comparable=rows.filter(r=>typeof r[`gap_${selected}`]==='number');const last=comparable.at(-1),first=comparable[0];const gap=last?.[`gap_${selected}`] as number|undefined;const change=last&&first&&last!==first?(last[`gap_${selected}`] as number)-(first[`gap_${selected}`] as number):null;
- const latest=(id:string)=>[...rows].reverse().find(r=>typeof r[id]==='number');
- const recent=useMemo(()=>filterRecords(data,{kind,propertyId:recordProperty,query:recordQuery,years:recordYears}),[data,kind,recordProperty,recordQuery,recordYears]);
- function open(which:typeof modal,p?:Property){setEditing(p||null);setTarget(p?.id||base||data.properties[0]?.id||'');setRecordMode('manual');setModal(which);setMessage('');}
- async function action(fn:()=>Promise<void>){setBusy(true);setMessage('');try{await fn();}catch(e){setMessage(e instanceof Error?e.message:'작업에 실패했습니다.');}finally{setBusy(false);}}
- async function logout(){if(!supabase||busy)return;await action(async()=>{const {error}=await supabase!.auth.signOut({scope:'local'});if(error)throw new Error('로그아웃하지 못했습니다. 다시 시도해 주세요.');window.location.assign('/auth');});}
- async function saveProperty(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);await action(async()=>{
-  const isEditing=Boolean(editing),p:Property={id:editing?.id||crypto.randomUUID(),name:String(f.get('name')).trim(),district:String(f.get('district')),dong:String(f.get('dong')).trim(),area:areaGroup(Number(f.get('area'))),owned:f.get('owned')==='true',color:editing?.color||colors[data.properties.length%colors.length],apt_seq:String(f.get('apt_seq')||'').trim()||null,kakao_place_id:String(f.get('kakao_place_id')||'').trim()||null,road_address:String(f.get('road_address')||'').trim(),jibun_address:String(f.get('jibun_address')||'').trim()};
-  if(!/^[0-9]{5}$/.test(p.district)||!p.dong)throw new Error('검색 결과에서 아파트 주소를 선택해 주세요.');if(!p.name)throw new Error('단지명을 입력해 주세요.');if(!Number.isFinite(p.area)||p.area<=0||p.area>999)throw new Error('전용면적을 선택해 주세요.');
-  const initialMonths=tradeMonthsForNewProperty(isEditing,String(f.get('start')),String(f.get('end')),today().slice(0,7));
-  if(mode==='cloud'&&supabase){const {error}=await supabase.from('properties').upsert({...p,user_id:session!.user.id});if(error){void reportClientError('property.save',error.code);throw new Error('단지 정보를 저장하지 못했습니다. 다시 시도해 주세요.');}}
-  setData(d=>({...d,properties:isEditing?d.properties.map(x=>x.id===p.id?p:x):[...d.properties,p]}));if(p.owned)setBase(p.id);setModal(null);
-  if(isEditing)return;
-  if(!supabase||!session){setMessage('단지를 추가했습니다. 실거래가는 클라우드 로그인 후 자동으로 불러올 수 있습니다.');return;}
-  const client=supabase,owner=session.user.id,results=await runTradeSync([p],initialMonths,async(propertyId,month)=>{
-   const {data:{session:s}}=await client.auth.getSession();if(!s||s.user.id!==owner)throw new Error('로그인을 다시 해 주세요.');
-   const res=await fetch('/api/trades',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${s.access_token}`},body:JSON.stringify({propertyId,month}),signal:AbortSignal.timeout(65000)});
-   const result=await res.json();if(!res.ok)throw new Error(result.error||'조회에 실패했습니다.');return result.count as number;
-  },setMessage,()=>account.current===owner);
-  try{await refresh();}catch{setMessage(`${syncSummary(results)}\n저장 결과를 화면에 불러오지 못했습니다. 새로고침해 주세요.`);return;}
-  if(account.current===owner){setKind('trade');setMessage(syncSummary(results));}
- });}
- async function saveRecord(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);await action(async()=>{const r:PriceRecord={id:crypto.randomUUID(),property_id:String(f.get('property')),date:String(f.get('date')),price:Number(f.get('price'))*10000,kind:String(f.get('kind')) as Kind,source:'직접 입력',note:String(f.get('note')).trim()};if(r.date>today()||r.price<=0||!Number.isFinite(r.price)||!data.properties.some(p=>p.id===r.property_id))throw new Error('단지, 날짜와 가격을 확인해 주세요.');if(mode==='cloud'&&supabase){const {error}=await supabase.from('records').insert({...r,user_id:session!.user.id});if(error){void reportClientError('record.save',error.code);throw new Error('가격 기록을 저장하지 못했습니다. 다시 시도해 주세요.');}}setData(d=>({...d,records:[...d.records,r]}));if(r.property_id===base){setBaseKind(r.kind);}else setKind(r.kind);setModal(null);});}
- async function reloadTrades(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);await action(async()=>{
-  if(mode!=='cloud'||!supabase||!session)throw new Error('실거래가는 로그인 후 다시 조회할 수 있습니다.');
-  const property=data.properties.find(p=>p.id===String(f.get('property')));if(!property)throw new Error('조회할 단지를 선택해 주세요.');
-  const selectedMonths=syncMonths(String(f.get('start')),String(f.get('end'))),client=supabase,owner=session.user.id;
-  const results=await runTradeSync([property],selectedMonths,async(propertyId,month)=>{const {data:{session:s}}=await client.auth.getSession();if(!s||s.user.id!==owner)throw new Error('로그인을 다시 해 주세요.');const res=await fetch('/api/trades',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${s.access_token}`},body:JSON.stringify({propertyId,month}),signal:AbortSignal.timeout(65000)});const result=await res.json();if(!res.ok)throw new Error(result.error||'조회에 실패했습니다.');return result.count as number;},setMessage,()=>account.current===owner);
-  await refresh();if(account.current===owner){setKind('trade');setModal(null);setMessage(syncSummary(results));}
- });}
- async function removeProperty(p:Property){if(!confirm(`${p.name}과 연결된 모든 가격 기록을 삭제할까요?`))return;await action(async()=>{if(mode==='cloud'&&supabase){const {error}=await supabase.from('properties').delete().eq('id',p.id);if(error){void reportClientError('property.delete',error.code);throw new Error('단지를 삭제하지 못했습니다. 다시 시도해 주세요.');}}setData(d=>({properties:d.properties.filter(x=>x.id!==p.id),records:d.records.filter(r=>r.property_id!==p.id)}));});}
- async function removeRecord(id:string){if(!confirm('이 가격 기록을 삭제할까요?'))return;await action(async()=>{if(mode==='cloud'&&supabase){const{error}=await supabase.from('records').delete().eq('id',id);if(error){void reportClientError('record.delete',error.code);throw new Error('가격 기록을 삭제하지 못했습니다. 다시 시도해 주세요.');}}setData(d=>({...d,records:d.records.filter(r=>r.id!==id)}));});}
- function exportData(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`jipgap-${today()}.json`;a.click();URL.revokeObjectURL(url);}
- function startLocal(){setData(empty);setMode('local');setTab('properties');setMessage('이 브라우저에 저장됩니다. 기기 간 동기화는 클라우드 연결 후 사용할 수 있습니다.');}
- return <div className="shell"><aside className="sidebar"><a className="brand" href="/"><span className="brand-icon"><Layers size={23}/></span>집업<span className="brand-en">ZIPUP</span></a><div className="workspace"><span className="avatar">{[...profileLabel(profile)][0]}</span><div><strong>{profileLabel(profile)}</strong><small>Personal workspace</small></div></div><span className="nav-label">WORKSPACE</span><nav>{[['overview','가격 간격',ChartNoAxesCombined],['properties','보유 · 관심단지',Building2],['records','가격 기록',NotebookPen]].map(([id,label,Icon])=><button key={String(id)} className={tab===id?'active':''} onClick={()=>setTab(String(id))}>{typeof Icon!=='string'&&<Icon size={19}/>}<span>{String(label)}</span>{id==='properties'&&<em>{data.properties.length}</em>}</button>)}</nav><div className="sidebar-bottom"><div className="storage"><Cloud size={18}/><strong>{mode==='cloud'?'클라우드에 저장':'나만의 부동산 노트'}</strong><p>{mode==='cloud'?'어디서든 같은 기록을 확인하세요.':'가격보다 중요한, 가격 사이의 변화.'}</p></div><button onClick={()=>setTab('settings')} className={tab==='settings'?'active':''}><Settings2 size={19}/>설정</button></div></aside>
- <div className="content"><header className="topbar"><span>나의 부동산 <ChevronRight size={14}/> <strong>{tab==='overview'?'가격 간격':tab==='properties'?'보유 · 관심단지':tab==='records'?'가격 기록':'설정'}</strong></span><div className="account-actions"><button className="status" onClick={()=>setTab('settings')}><Cloud size={15}/>{mode==='demo'?'데모 워크스페이스':mode==='local'?'이 기기에 저장 중':'클라우드 연결됨'}</button>{session&&<button className="button account-logout" disabled={busy} onClick={logout}><LogOut size={15}/>로그아웃</button>}</div></header>
- <main>{mode==='demo'&&<div className="demo-banner"><span><Info size={16}/><b>데모 모드</b> 실제 시세가 아닌 가상 데이터로 둘러보고 있어요.</span><div className="auth-entry"><a href="/auth">로그인 · 회원가입</a><button onClick={startLocal}>이 기기에만 기록 <ArrowRight size={15}/></button></div></div>}{mode==='local'&&<div className="demo-banner"><span><Info size={16}/>이 브라우저에만 저장됩니다. PC·모바일 동기화는 클라우드 연결이 필요합니다.</span><button onClick={()=>setTab('settings')}>연결 설정 <ArrowRight size={15}/></button></div>}
- <div className="page-heading"><div><div className="eyebrow">MY REAL ESTATE TRACKER</div><h1>{tab==='overview'?'내 집과의 거리, 한눈에':tab==='properties'?'나의 단지 모아보기':tab==='records'?'차곡차곡, 가격 기록': '어디서든 이어지는 기록'}</h1><p>{tab==='overview'?'관심단지까지의 가격 간격이 어떻게 달라지고 있는지 살펴보세요.':tab==='properties'?'보유 부동산과 관심단지를 전용면적별로 관리하세요.':tab==='records'?'실거래가와 직접 평가 가격을 구분해 기록합니다.':'클라우드 저장과 실거래 데이터 연결을 준비하세요.'}</p></div></div>
- {message&&!modal&&<div role="status" className="message">{message}<button aria-label="알림 닫기" onClick={()=>setMessage('')}><X size={16}/></button></div>}
- {!ready?<div className="empty">기록을 불러오는 중…</div>:tab==='overview'?<>
- <div className="filters"><div className="filter-control"><span>보유 주택</span><select aria-label="기준 부동산" value={base} onChange={e=>{setBase(e.target.value);setBaseKind(null);}}>{(data.properties.some(p=>p.owned)?data.properties.filter(p=>p.owned):data.properties).map(p=><option key={p.id} value={p.id}>{p.name} · {areaGroup(p.area)}㎡</option>)}</select></div><div className="filter-control"><span>보유 주택 가격</span><select aria-label="기준 부동산 가격 기준" value={effectiveBaseKind} onChange={e=>setBaseKind(e.target.value as Kind)}>{supportedKinds.map(k=><option key={k} value={k}>{labels[k]}</option>)}</select></div><span className="filter-note">관심단지는 실거래가 · {interval==='month'?'월간':'주간'} 중앙값 기준 <Info size={14}/></span></div>
- <section className="stats"><div className="stat base-stat"><div className="stat-title"><span><House size={17}/>기준 부동산</span><span className="tag">{baseProperty?.owned?'보유':'비교 기준'}</span></div><h3>{baseProperty?.name||'보유 부동산을 추가하세요'}</h3><div className="stat-price">{money(latest(base)?.[base] as number)}<span>{baseProperty?areaGroup(baseProperty.area):''}㎡</span></div><p>{latest(base)?.month||'기록 없음'} · {labels[effectiveBaseKind]} 중앙값</p></div><div className="stat"><div className="stat-title"><span><Building2 size={17}/>관심단지와의 간격</span><span className="tag light">{last?.month||'비교 자료 없음'}</span></div><select className="property-select" aria-label="관심단지 선택" value={selected} onChange={e=>setSelected(e.target.value)}>{data.properties.filter(p=>p.id!==base&&!p.owned).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><div className="stat-price">{gap!=null&&gap>0?'+':''}{money(gap)}<span>{gap==null?'':gap>=0?'추가로 필요한 금액':'기준보다 낮은 가격'}</span></div><p>{comparison?areaGroup(comparison.area):'—'}㎡ · 관심 {String(last?.[`gap_target_month_${selected}`]||'—')} · 내 집 {String(last?.[`gap_base_month_${selected}`]||'—')} 기준</p></div><div className="stat"><div className="stat-title"><span><ChartNoAxesCombined size={17}/>기간 내 간격 변화</span></div><h3>{interval==='month'?(months===12?'최근 1년':`최근 ${months/12}년`):(months===13?'최근 3개월':months===26?'최근 6개월':months===52?'최근 1년':'최근 3년')}의 변화</h3><div className={`stat-price ${change!=null&&change<0?'teal':''}`}>{change!=null&&(change<0?<ArrowDownRight size={28}/>:<ArrowUpRight size={28}/>)}{money(change==null?null:Math.abs(change))}<span>{change==null?'비교 시점이 더 필요해요':change<0?'가까워졌어요':change>0?'멀어졌어요':'변화 없어요'}</span></div><p>{first&&last?`${first.month} → ${last.month}`:'가격을 한 번 더 기록하면 변화를 볼 수 있어요'}</p></div></section>
- <section className="panel chart-panel"><div className="panel-heading"><div><h2>{chart==='gap'?'내 집과 관심단지의 가격 차이':'단지별 가격 흐름'} <span className="badge">관심단지 실거래가</span></h2><p>{chart==='gap'?'관심단지 실거래가에서 보유 주택 가격을 뺀 금액입니다.':'보유 주택 가격과 관심단지 실거래가를 함께 봅니다.'}</p></div><div className="chart-controls"><div className="segmented small chart-tabs" role="tablist" aria-label="가격 그래프"><button role="tab" aria-selected={chart==='price'} className={chart==='price'?'chosen':''} onClick={()=>setChart('price')}>단지별 가격</button><button role="tab" aria-selected={chart==='gap'} className={chart==='gap'?'chosen':''} onClick={()=>setChart('gap')}>내 집과 비교</button></div><div className="segmented small" aria-label="집계 단위"><button className={interval==='month'?'chosen':''} onClick={()=>{setInterval('month');setMonths(12);}}>월간</button><button className={interval==='week'?'chosen':''} onClick={()=>{setInterval('week');setMonths(26);}}>주간</button></div><select aria-label="차트 기간" value={months} onChange={e=>setMonths(Number(e.target.value))}>{interval==='month'?<><option value={12}>최근 1년</option><option value={36}>최근 3년</option><option value={60}>최근 5년</option><option value={120}>최근 10년</option></>:<><option value={13}>최근 3개월</option><option value={26}>최근 6개월</option><option value={52}>최근 1년</option><option value={156}>최근 3년</option></>}</select></div></div><p className="chart-basis">보유 주택: {labels[effectiveBaseKind]} · 관심단지: 실거래가 · {interval==='month'?'월간':'주간'} 중앙값 · 각 시점의 마지막 확인 가격으로 비교</p><div className="chart-legend">{data.properties.filter(p=>chart==='price'||(p.id!==base&&!p.owned)).map(p=><span key={p.id}><i style={{background:p.color}}/>{p.name}</span>)}<small>단위: 억 원</small></div><div className="chart">{!chartEmpty?<ResponsiveContainer width="100%" height="100%"><LineChart data={rows} margin={{top:15,right:20,left:0,bottom:0}}><CartesianGrid vertical={false} stroke="#e9edf3" strokeDasharray="4 4"/><XAxis dataKey="label" tickLine={false} axisLine={false} tick={{fill:'#8993a4',fontSize:12}} minTickGap={35} dy={12}/><YAxis tickFormatter={v=>`${Number(v)/10000}`} tickLine={false} axisLine={false} tick={{fill:'#8993a4',fontSize:12}} width={45}/><Tooltip labelFormatter={(_l,p)=>p[0]?.payload?.month||''} formatter={(v)=>money(Number(v))} contentStyle={{border:'1px solid #e5e9f1',borderRadius:12,fontSize:14}}/>{chart==='gap'&&<ReferenceLine y={0} stroke="#c4cbd8"/>}{data.properties.filter(p=>chart==='price'||(p.id!==base&&!p.owned)).map(p=><Line key={p.id} type="linear" dataKey={chart==='gap'?`gap_${p.id}`:p.id} name={p.name} stroke={p.color} strokeWidth={2.5} dot={{r:3,strokeWidth:2,fill:'white'}} activeDot={{r:5}} connectNulls isAnimationActive={false}/>)}</LineChart></ResponsiveContainer>:<div className="empty"><ChartNoAxesCombined size={32}/><h3>표시할 비교 자료가 없습니다</h3><p>{chartEmpty}</p><div className="heading-actions">{chart==='gap'&&<button className="button" onClick={()=>setChart('price')}>단지별 가격 보기</button>}<button className="button" onClick={()=>open(data.properties.length?'record':'property')}>가격 기록 추가</button></div></div>}</div><div className="chart-foot"><Info size={14}/>{interval==='month'?'월':'주'}별 가격이 바뀐 시점마다 양쪽의 마지막 확인 가격을 비교합니다. 카드에서 실제 기준 시점을 확인하세요.</div></section>
- <section className="watch-section"><div className="section-title"><h2>관심단지 <span>{data.properties.filter(p=>!p.owned).length}</span></h2><button onClick={()=>open('property')}><Plus size={16}/>단지 추가</button></div><div className="watch-grid">{data.properties.filter(p=>p.id!==base&&!p.owned).map(p=>{const r=[...rows].reverse().find(r=>typeof r[`gap_${p.id}`]==='number');const history=rows.filter(r=>typeof r[p.id]==='number');return <button className={`watch-card ${selected===p.id?'selected':''}`} key={p.id} onClick={()=>{setSelected(p.id);setChart('gap');}}><div className="watch-top"><span className="building-icon" style={{color:p.color,background:`${p.color}12`}}><Building2 size={21}/></span><span>{p.dong} · {areaGroup(p.area)}㎡</span><ArrowUpRight size={17}/></div><h3>{p.name}</h3><div className="watch-price">{money(history.at(-1)?.[p.id] as number)}<small>{history.at(-1)?.month||'기록 없음'}</small></div><div className="spark"><ResponsiveContainer width="100%" height="100%"><AreaChart data={rows}><Area dot={{r:2}} connectNulls dataKey={p.id} stroke={p.color} fill={`${p.color}12`} strokeWidth={2} isAnimationActive={false}/></AreaChart></ResponsiveContainer></div><div className="watch-footer"><span>내 집과의 간격</span><strong style={{color:p.color}}>{money(r?.[`gap_${p.id}`] as number)}</strong></div></button>})}<button className="add-card" onClick={()=>open('property')}><span><Plus size={23}/></span><strong>다음으로 눈여겨볼 집</strong><p>관심단지를 추가하고 함께 비교하세요</p></button></div></section>
- </>:tab==='properties'?<section className="panel"><div className="panel-heading"><h2>보유 · 관심단지 {data.properties.length}곳</h2><button className="button primary" onClick={()=>open('property')}><Plus size={16}/>단지 추가</button></div><div className="property-list">{!data.properties.length&&<div className="empty">보유 부동산부터 추가해 보세요.</div>}{data.properties.map(p=><div className="property-row" key={p.id}><div className="building-icon"><Building2/></div><div><h3>{p.name} <span className={`badge ${p.owned?'owned-badge':'watch-badge'}`}>{p.owned?'보유':'관심'}</span></h3><p>{p.dong} · 전용 {areaGroup(p.area)}㎡</p></div><div className="row-actions"><button className="button" onClick={()=>open('record',p)}>가격 기록</button><button className="button" onClick={()=>open('property',p)}>수정</button><button aria-label={`${p.name} 삭제`} disabled={busy} onClick={()=>removeProperty(p)}><Trash2 size={17}/></button></div></div>)}</div></section>:tab==='records'?<section className="panel"><div className="panel-heading records-heading"><div><h2>가격 기록 <span className="badge">{recent.length}건</span></h2><p>단지와 기간을 선택하거나 단지명·출처·메모를 검색하세요.</p></div><div className="segmented">{supportedKinds.map(k=><button key={k} className={kind===k?'chosen':''} onClick={()=>setKind(k)}>{labels[k]}</button>)}</div></div><div className="record-filters"><select aria-label="기록 단지" value={recordProperty} onChange={event=>setRecordProperty(event.target.value)}><option value="all">전체 단지</option>{data.properties.map(property=><option key={property.id} value={property.id}>{property.name} · {areaGroup(property.area)}㎡</option>)}</select><select aria-label="기록 기간" value={recordYears??'all'} onChange={event=>setRecordYears(event.target.value==='all'?null:Number(event.target.value))}><option value="all">전체 기간</option><option value="1">최근 1년</option><option value="3">최근 3년</option><option value="5">최근 5년</option></select><input aria-label="가격 기록 검색" value={recordQuery} onChange={event=>setRecordQuery(event.target.value)} placeholder="단지명, 출처, 메모 검색"/></div><div className="table-wrap"><table><thead><tr><th>기준일</th><th>단지</th><th>가격</th><th>출처 / 메모</th><th>관리</th></tr></thead><tbody>{recent.map(r=><tr key={r.id}><td>{r.date}</td><td>{data.properties.find(p=>p.id===r.property_id)?.name}</td><td><strong>{money(r.price)}</strong></td><td>{r.source}<small>{r.note}</small></td><td><button disabled={busy} aria-label={`${r.date} 기록 삭제`} onClick={()=>removeRecord(r.id)}><Trash2 size={16}/></button></td></tr>)}</tbody></table>{!recent.length&&<div className="empty">조건에 맞는 가격 기록이 없습니다.</div>}</div></section>:<div className="settings-grid"><section className="panel settings-panel"><Cloud size={25}/><h2>클라우드 동기화</h2><p>집업 계정으로 로그인하면 PC와 모바일에서 같은 기록을 볼 수 있습니다. 현재 브라우저의 기록은 자동으로 업로드되지 않습니다.</p><div className="connection">{supabase?'연결 설정됨':'Supabase 연결 설정 대기'}</div>{session?<><p><strong>{profileLabel(profile)}</strong>으로 로그인했습니다.</p><button className="button" disabled={busy} onClick={logout}><LogOut size={16}/>로그아웃</button></>:<div className="auth-entry"><a className="button primary" href="/auth">로그인 · 회원가입</a></div>}<p className="muted">모든 계정은 동일한 기능을 사용하며, 본인의 기록만 볼 수 있습니다.</p></section>{session&&<ProfileSettings profile={profile} onSaved={setProfile}/>}<section className="panel settings-panel"><Download size={25}/><h2>기록 백업</h2><p>단지 정보와 전체 가격 기록을 JSON 파일로 내려받습니다. 장기 보관이나 다른 도구로 이동할 때 사용할 수 있습니다.</p><button className="button" onClick={exportData}><Download size={16}/>전체 기록 내려받기</button></section><section className="panel settings-panel"><Info size={25}/><h2>가격 간격 계산 방식</h2><p>월간 또는 주간 중앙값을 사용하며 기준 부동산과 관심단지의 가격 종류를 각각 선택할 수 있습니다. 관심단지 가격에서 기준 부동산 가격을 뺍니다.</p><p>각 시점의 마지막 확인 가격을 비교합니다. 단순 매매가격 차이이며 세금·대출·거래 비용은 포함하지 않습니다.</p></section><SupportForm loggedIn={Boolean(session)} screen="설정"/></div>}
- <footer><span><Layers size={14}/>집업</span><span>나의 기록으로 만드는, 다음 집의 기준.</span></footer></main></div>
- <dialog ref={dialog} onCancel={e=>{if(busy)e.preventDefault();else setModal(null);}} onClose={()=>{if(!busy)setModal(null);}}><div className="modal-header"><h2>{modal==='property'?(editing?'단지 수정':'새 단지 추가'):modal==='record'?'가격 기록하기':'내 계정으로 로그인'}</h2><button aria-label="닫기" disabled={busy} onClick={()=>setModal(null)}><X size={21}/></button></div>{modal==='property'?<form onSubmit={saveProperty}><label>구분<select name="owned" defaultValue={editing?.owned?'true':'false'}><option value="false">관심단지</option><option value="true">보유 부동산</option></select></label><PropertyAddress key={editing?.id||'new'} property={editing}/><p className="muted">선택한 주소와 실거래 단지 식별값을 기준으로 조회합니다. 전용면적은 소수점 아래를 버려 같은 정수 면적끼리 함께 조회합니다.</p>{!editing&&<><div className="form-row"><label>실거래 조회 시작 월<MonthPicker name="start" disabled={busy} min="2006-01" max={today().slice(0,7)} defaultValue={`${today().slice(0,4)}-01`}/></label><label>종료 월<MonthPicker name="end" disabled={busy} min="2006-01" max={today().slice(0,7)} defaultValue={today().slice(0,7)}/></label></div>{mode!=='cloud'&&<p className="notice">클라우드 로그인 상태에서 단지를 추가하면 선택 기간의 실거래가도 함께 저장됩니다.</p>}</>}{editing&&<p className="muted">기존 가격 기록은 유지됩니다. 다른 단지나 다른 면적으로 바꾸려면 새 단지로 추가해 주세요.</p>}<button className="button primary full" disabled={busy}>{busy?'처리 중…':editing?'저장하기':'단지 추가 및 실거래 불러오기'}</button></form>:modal==='record'?<><div className="segmented" role="tablist" aria-label="가격 기록 방식"><button type="button" role="tab" aria-selected={recordMode==='manual'} className={recordMode==='manual'?'chosen':''} onClick={()=>{setRecordMode('manual');setMessage('');}}>직접 입력</button><button type="button" role="tab" aria-selected={recordMode==='trade'} className={recordMode==='trade'?'chosen':''} onClick={()=>{setRecordMode('trade');setMessage('');}}>실거래 다시 조회</button></div>{recordMode==='manual'?<form onSubmit={saveRecord}><label>단지<select name="property" defaultValue={target} required>{data.properties.map(p=><option key={p.id} value={p.id}>{p.name} · {areaGroup(p.area)}㎡</option>)}</select></label><div className="form-row"><label>가격 기준<select name="kind" defaultValue={kind}>{supportedKinds.map(k=><option value={k} key={k}>{labels[k]}</option>)}</select></label><label>기준일<input name="date" type="date" max={today()} defaultValue={today()} required/></label></div><label>가격 (억 원)<input name="price" type="number" required min="0.0001" max="9999" step="0.0001" placeholder="예: 16.5"/></label><label>메모<input name="note" maxLength={500} placeholder="예: 12층 · 남향 · 내부 수리 완료"/></label><button className="button primary full" disabled={busy}>가격 기록 저장</button></form>:<form onSubmit={reloadTrades}><label>단지<select name="property" defaultValue={target} required>{data.properties.map(p=><option key={p.id} value={p.id}>{p.name} · {areaGroup(p.area)}㎡</option>)}</select></label><div className="form-row"><label>조회 시작 월<MonthPicker name="start" disabled={busy} min="2006-01" max={today().slice(0,7)} defaultValue={`${today().slice(0,4)}-01`}/></label><label>종료 월<MonthPicker name="end" disabled={busy} min="2006-01" max={today().slice(0,7)} defaultValue={today().slice(0,7)}/></label></div>{mode!=='cloud'&&<p className="notice">실거래가를 다시 조회하려면 로그인해 주세요.</p>}<button className="button primary full" disabled={busy||mode!=='cloud'}>{busy?'조회 중…':'선택 기간 실거래 다시 조회'}</button></form>}</>:null}{message&&modal&&<div role="status" className="notice">{message}</div>}</dialog>
- </div>
+"use client";
+import { useEffect, useMemo, useRef, useState, FormEvent } from "react";
+import {
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
+import {
+  ArrowUpRight,
+  ArrowDownRight,
+  ArrowRight,
+  Plus,
+  House,
+  ChartNoAxesCombined,
+  Building2,
+  Settings2,
+  Download,
+  X,
+  Trash2,
+  NotebookPen,
+  LogOut,
+  ChevronRight,
+  Layers,
+  Cloud,
+  Info,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { areaGroup } from "@/lib/area";
+import { runTradeSync, syncMonths, syncSummary } from "@/lib/trade-sync";
+import { PropertyAddress } from "@/app/components/property-address";
+import { MonthPicker } from "@/app/components/month-picker";
+import { ProfileSettings } from "@/app/components/profile-settings";
+import { SupportForm } from "@/app/components/support-form";
+import {
+  Data,
+  Property,
+  Record as PriceRecord,
+  Kind,
+  Interval,
+  colors,
+  demoData,
+  labels,
+  supportedKinds,
+  money,
+  series,
+  chartAvailability,
+} from "@/lib/model";
+import { filterRecords } from "@/lib/record-filter";
+import {
+  propertyRegionLabel,
+  regionOptions,
+} from "@/lib/property-context";
+import { profileLabel, type Profile } from "@/lib/profile";
+import { tradeMonthsForNewProperty } from "@/lib/property-create";
+import { reportClientError } from "@/lib/client-error";
+import type { Session } from "@supabase/supabase-js";
+const empty: Data = { properties: [], records: [] };
+const today = () => new Date().toISOString().slice(0, 10);
+export default function Page() {
+  const [data, setData] = useState<Data>(empty),
+    [ready, setReady] = useState(false),
+    [mode, setMode] = useState<"demo" | "local" | "cloud">("demo"),
+    [session, setSession] = useState<Session | null>(null),
+    [profile, setProfile] = useState<Profile | null>(null);
+  const [tab, setTab] = useState("overview"),
+    [kind, setKind] = useState<Kind>("trade"),
+    [months, setMonths] = useState(12),
+    [interval, setInterval] = useState<Interval>("month"),
+    [base, setBase] = useState("home"),
+    [selected, setSelected] = useState("p1"),
+    [chart, setChart] = useState<"gap" | "price">("gap"),
+    [regionId, setRegionId] = useState("all"),
+    [chartPropertyIds, setChartPropertyIds] = useState<string[]>([]);
+  const [baseKind, setBaseKind] = useState<Kind | null>(null);
+  const [recordProperty, setRecordProperty] = useState("all"),
+    [recordQuery, setRecordQuery] = useState(""),
+    [recordYears, setRecordYears] = useState<number | null>(1);
+  const [modal, setModal] = useState<"property" | "record" | null>(null),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(""),
+    [editing, setEditing] = useState<Property | null>(null),
+    [target, setTarget] = useState(""),
+    [recordMode, setRecordMode] = useState<"manual" | "trade">("manual");
+  const dialog = useRef<HTMLDialogElement>(null);
+  const account = useRef<string | null>(null);
+  const loadVersion = useRef(0);
+  const chartSelectionInitialized = useRef(false);
+  function restoreLocal() {
+    try {
+      const saved = localStorage.getItem("jipgap-local");
+      if (saved) {
+        setData(JSON.parse(saved));
+        setMode("local");
+        return;
+      }
+    } catch {}
+    setData(demoData());
+    setMode("demo");
+  }
+  async function refresh() {
+    if (!supabase || !account.current) return;
+    const owner = account.current;
+    const version = ++loadVersion.current;
+    const profileRequest = supabase.rpc("ensure_profile").single();
+    const p = await supabase.from("properties").select("*").order("name");
+    if (p.error)
+      throw new Error("단지를 불러오지 못했습니다. 연결 설정을 확인해 주세요.");
+    const records: PriceRecord[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const r = await supabase
+        .from("records")
+        .select("*")
+        .order("date", { ascending: false })
+        .order("id")
+        .range(offset, offset + 999);
+      if (r.error)
+        throw new Error(
+          "가격 기록을 불러오지 못했습니다. 연결을 확인해 주세요.",
+        );
+      records.push(...r.data);
+      if (r.data.length < 1000) break;
+    }
+    const profileResult = await profileRequest;
+    if (account.current === owner && loadVersion.current === version) {
+      setData({ properties: p.data, records });
+      setProfile(profileResult.error ? null : (profileResult.data as Profile));
+    }
+  }
+  useEffect(() => {
+    let alive = true;
+    restoreLocal();
+    setReady(true);
+    if (!supabase) return;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      if (!alive) return;
+      const changed = account.current !== (s?.user.id || null);
+      account.current = s?.user.id || null;
+      setSession(s);
+      if (changed) {
+        loadVersion.current++;
+        setModal(null);
+        setMessage("");
+        setProfile(null);
+        if (s) {
+          setMode("cloud");
+          setData(empty);
+          const owner = s.user.id;
+          setTimeout(() => {
+            if (alive && account.current === owner)
+              refresh().catch((e) => {
+                if (alive && account.current === owner) setMessage(e.message);
+              });
+          }, 0);
+        } else restoreLocal();
+      }
+    });
+    return () => {
+      alive = false;
+      loadVersion.current++;
+      subscription.unsubscribe();
+    };
+  }, []);
+  useEffect(() => {
+    if (ready && mode === "local") {
+      try {
+        localStorage.setItem("jipgap-local", JSON.stringify(data));
+      } catch {
+        setMessage(
+          "이 브라우저에 저장하지 못했습니다. 백업을 내려받아 주세요.",
+        );
+      }
+    }
+  }, [data, mode, ready]);
+  useEffect(() => {
+    if (modal) dialog.current?.showModal();
+    else dialog.current?.close();
+  }, [modal]);
+  useEffect(() => {
+    const owned = data.properties.filter((p) => p.owned);
+    if (
+      !data.properties.some((p) => p.id === base) ||
+      (owned.length > 0 && !owned.some((p) => p.id === base))
+    ) {
+      setBase(owned[0]?.id || data.properties[0]?.id || "");
+      setBaseKind(null);
+    }
+  }, [data.properties, base]);
+  const baseProperty = data.properties.find((p) => p.id === base),
+    comparison = data.properties.find((p) => p.id === selected);
+  const effectiveBaseKind =
+    baseKind ??
+    (!data.records.some((r) => r.property_id === base && r.kind === "trade") &&
+    data.records.some((r) => r.property_id === base && r.kind === "estimate")
+      ? "estimate"
+      : "trade");
+  const rows = useMemo(
+    () =>
+      series(
+        data,
+        base,
+        "trade",
+        months,
+        new Date(),
+        effectiveBaseKind,
+        interval,
+      ),
+    [data, base, months, effectiveBaseKind, interval],
+  );
+  const visibleProperties = useMemo(
+    () =>
+      data.properties.filter(
+        (p) => regionId === "all" || p.district === regionId,
+      ),
+    [data.properties, regionId],
+  );
+  const watchProperties = useMemo(
+    () =>
+      visibleProperties
+        .filter((p) => p.id !== base && !p.owned)
+        .toSorted((a, b) => a.name.localeCompare(b.name, "ko")),
+    [visibleProperties, base],
+  );
+  const selectedChartProperties = useMemo(
+    () => watchProperties.filter((p) => chartPropertyIds.includes(p.id)),
+    [watchProperties, chartPropertyIds],
+  );
+  const chartProperties =
+    chart === "price"
+      ? [...(baseProperty ? [baseProperty] : []), ...selectedChartProperties]
+      : selectedChartProperties;
+  const chartStyles = [
+    ["#0f766e", undefined],
+    ["#9333ea", "6 3"],
+    ["#dc2626", "2 3"],
+    ["#ea580c", "8 3 2 3"],
+    ["#0891b2", "1 3"],
+    ["#be123c", "10 3"],
+    ["#4f46e5", "4 2"],
+    ["#65a30d", "7 2 1 2"],
+    ["#a16207", "3 2 8 2"],
+    ["#475569", "9 2 2 2"],
+  ] as const;
+  const chartStyle = (property: Property) =>
+    property.id === base
+      ? { color: "#285ee8", dash: undefined }
+      : {
+          color:
+            chartStyles[
+              Math.max(
+                0,
+                selectedChartProperties.findIndex((p) => p.id === property.id),
+              )
+            ][0],
+          dash: chartStyles[
+            Math.max(
+              0,
+              selectedChartProperties.findIndex((p) => p.id === property.id),
+            )
+          ][1],
+        };
+  const chartEmpty = chart === "gap" && !selectedChartProperties.length
+    ? "그래프에 표시할 관심단지를 선택해 주세요."
+    : chartAvailability(
+        data,
+        rows,
+        base,
+        "trade",
+        effectiveBaseKind,
+        chart,
+        chartPropertyIds,
+      );
+  const comparable = rows.filter(
+    (r) => typeof r[`gap_${selected}`] === "number",
+  );
+  const last = comparable.at(-1),
+    first = comparable[0];
+  const gap = last?.[`gap_${selected}`] as number | undefined;
+  const change =
+    last && first && last !== first
+      ? (last[`gap_${selected}`] as number) -
+        (first[`gap_${selected}`] as number)
+      : null;
+  const latest = (id: string) =>
+    [...rows].reverse().find((r) => typeof r[id] === "number");
+  useEffect(() => {
+    chartSelectionInitialized.current = false;
+    setChartPropertyIds([]);
+  }, [mode]);
+  useEffect(() => {
+    if (!watchProperties.length) {
+      setChartPropertyIds([]);
+    } else if (!chartSelectionInitialized.current) {
+      chartSelectionInitialized.current = true;
+      setChartPropertyIds(watchProperties.slice(0, 5).map((p) => p.id));
+    } else {
+      const available = new Set(watchProperties.map((p) => p.id));
+      setChartPropertyIds((ids) => ids.filter((id) => available.has(id)));
+    }
+    if (!watchProperties.some((p) => p.id === selected))
+      setSelected(watchProperties[0]?.id || "");
+  }, [watchProperties, selected]);
+  const recent = useMemo(
+    () =>
+      filterRecords(data, {
+        kind,
+        propertyId: recordProperty,
+        query: recordQuery,
+        years: recordYears,
+        regionId,
+      }),
+    [data, kind, recordProperty, recordQuery, recordYears, regionId],
+  );
+  const propertyById = useMemo(
+    () => new Map(data.properties.map((p) => [p.id, p])),
+    [data.properties],
+  );
+  function selectRegion(nextRegionId: string) {
+    setRegionId(nextRegionId);
+    const nextWatch = data.properties
+      .filter(
+        (p) =>
+          (nextRegionId === "all" || p.district === nextRegionId) &&
+          p.id !== base &&
+          !p.owned,
+      )
+      .toSorted((a, b) => a.name.localeCompare(b.name, "ko"));
+    setChartPropertyIds(nextWatch.slice(0, 5).map((p) => p.id));
+    setSelected(nextWatch[0]?.id || "");
+    if (
+      recordProperty !== "all" &&
+      !data.properties.some(
+        (p) =>
+          p.id === recordProperty &&
+          (nextRegionId === "all" || p.district === nextRegionId),
+      )
+    )
+      setRecordProperty("all");
+  }
+  function toggleChartProperty(id: string) {
+    setChartPropertyIds((ids) => {
+      if (ids.includes(id)) return ids.filter((value) => value !== id);
+      if (ids.length >= 10) {
+        setMessage("그래프에는 관심단지 10곳까지 표시할 수 있습니다.");
+        return ids;
+      }
+      return [...ids, id];
+    });
+  }
+  function open(which: typeof modal, p?: Property) {
+    setEditing(p || null);
+    setTarget(p?.id || base || data.properties[0]?.id || "");
+    setRecordMode("manual");
+    setModal(which);
+    setMessage("");
+  }
+  async function action(fn: () => Promise<void>) {
+    setBusy(true);
+    setMessage("");
+    try {
+      await fn();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "작업에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function logout() {
+    if (!supabase || busy) return;
+    await action(async () => {
+      const { error } = await supabase!.auth.signOut({ scope: "local" });
+      if (error)
+        throw new Error("로그아웃하지 못했습니다. 다시 시도해 주세요.");
+      window.location.assign("/auth");
+    });
+  }
+  async function saveProperty(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    await action(async () => {
+      const isEditing = Boolean(editing),
+        p: Property = {
+          id: editing?.id || crypto.randomUUID(),
+          name: String(f.get("name")).trim(),
+          district: String(f.get("district")),
+          dong: String(f.get("dong")).trim(),
+          area: areaGroup(Number(f.get("area"))),
+          owned: f.get("owned") === "true",
+          color:
+            editing?.color || colors[data.properties.length % colors.length],
+          apt_seq: String(f.get("apt_seq") || "").trim() || null,
+          kakao_place_id: String(f.get("kakao_place_id") || "").trim() || null,
+          road_address: String(f.get("road_address") || "").trim(),
+          jibun_address: String(f.get("jibun_address") || "").trim(),
+        };
+      if (!/^[0-9]{5}$/.test(p.district) || !p.dong)
+        throw new Error("검색 결과에서 아파트 주소를 선택해 주세요.");
+      if (!p.name) throw new Error("단지명을 입력해 주세요.");
+      if (!Number.isFinite(p.area) || p.area <= 0 || p.area > 999)
+        throw new Error("전용면적을 선택해 주세요.");
+      const initialMonths = tradeMonthsForNewProperty(
+        isEditing,
+        String(f.get("start")),
+        String(f.get("end")),
+        today().slice(0, 7),
+      );
+      if (mode === "cloud" && supabase) {
+        const { error } = await supabase
+          .from("properties")
+          .upsert({ ...p, user_id: session!.user.id });
+        if (error) {
+          void reportClientError("property.save", error.code);
+          throw new Error(
+            "단지 정보를 저장하지 못했습니다. 다시 시도해 주세요.",
+          );
+        }
+      }
+      setData((d) => ({
+        ...d,
+        properties: isEditing
+          ? d.properties.map((x) => (x.id === p.id ? p : x))
+          : [...d.properties, p],
+      }));
+      if (p.owned) setBase(p.id);
+      setModal(null);
+      if (isEditing) return;
+      if (!supabase || !session) {
+        setMessage(
+          "단지를 추가했습니다. 실거래가는 클라우드 로그인 후 자동으로 불러올 수 있습니다.",
+        );
+        return;
+      }
+      const client = supabase,
+        owner = session.user.id,
+        results = await runTradeSync(
+          [p],
+          initialMonths,
+          async (propertyId, month) => {
+            const {
+              data: { session: s },
+            } = await client.auth.getSession();
+            if (!s || s.user.id !== owner)
+              throw new Error("로그인을 다시 해 주세요.");
+            const res = await fetch("/api/trades", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${s.access_token}`,
+              },
+              body: JSON.stringify({ propertyId, month }),
+              signal: AbortSignal.timeout(65000),
+            });
+            const result = await res.json();
+            if (!res.ok)
+              throw new Error(result.error || "조회에 실패했습니다.");
+            return result.count as number;
+          },
+          setMessage,
+          () => account.current === owner,
+        );
+      try {
+        await refresh();
+      } catch {
+        setMessage(
+          `${syncSummary(results)}\n저장 결과를 화면에 불러오지 못했습니다. 새로고침해 주세요.`,
+        );
+        return;
+      }
+      if (account.current === owner) {
+        setKind("trade");
+        setMessage(syncSummary(results));
+      }
+    });
+  }
+  async function saveRecord(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    await action(async () => {
+      const r: PriceRecord = {
+        id: crypto.randomUUID(),
+        property_id: String(f.get("property")),
+        date: String(f.get("date")),
+        price: Number(f.get("price")) * 10000,
+        kind: String(f.get("kind")) as Kind,
+        source: "직접 입력",
+        note: String(f.get("note")).trim(),
+      };
+      if (
+        r.date > today() ||
+        r.price <= 0 ||
+        !Number.isFinite(r.price) ||
+        !data.properties.some((p) => p.id === r.property_id)
+      )
+        throw new Error("단지, 날짜와 가격을 확인해 주세요.");
+      if (mode === "cloud" && supabase) {
+        const { error } = await supabase
+          .from("records")
+          .insert({ ...r, user_id: session!.user.id });
+        if (error) {
+          void reportClientError("record.save", error.code);
+          throw new Error(
+            "가격 기록을 저장하지 못했습니다. 다시 시도해 주세요.",
+          );
+        }
+      }
+      setData((d) => ({ ...d, records: [...d.records, r] }));
+      if (r.property_id === base) {
+        setBaseKind(r.kind);
+      } else setKind(r.kind);
+      setModal(null);
+    });
+  }
+  async function reloadTrades(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    await action(async () => {
+      if (mode !== "cloud" || !supabase || !session)
+        throw new Error("실거래가는 로그인 후 다시 조회할 수 있습니다.");
+      const property = data.properties.find(
+        (p) => p.id === String(f.get("property")),
+      );
+      if (!property) throw new Error("조회할 단지를 선택해 주세요.");
+      const selectedMonths = syncMonths(
+          String(f.get("start")),
+          String(f.get("end")),
+        ),
+        client = supabase,
+        owner = session.user.id;
+      const results = await runTradeSync(
+        [property],
+        selectedMonths,
+        async (propertyId, month) => {
+          const {
+            data: { session: s },
+          } = await client.auth.getSession();
+          if (!s || s.user.id !== owner)
+            throw new Error("로그인을 다시 해 주세요.");
+          const res = await fetch("/api/trades", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${s.access_token}`,
+            },
+            body: JSON.stringify({ propertyId, month }),
+            signal: AbortSignal.timeout(65000),
+          });
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || "조회에 실패했습니다.");
+          return result.count as number;
+        },
+        setMessage,
+        () => account.current === owner,
+      );
+      await refresh();
+      if (account.current === owner) {
+        setKind("trade");
+        setModal(null);
+        setMessage(syncSummary(results));
+      }
+    });
+  }
+  async function removeProperty(p: Property) {
+    if (!confirm(`${p.name}과 연결된 모든 가격 기록을 삭제할까요?`)) return;
+    await action(async () => {
+      if (mode === "cloud" && supabase) {
+        const { error } = await supabase
+          .from("properties")
+          .delete()
+          .eq("id", p.id);
+        if (error) {
+          void reportClientError("property.delete", error.code);
+          throw new Error("단지를 삭제하지 못했습니다. 다시 시도해 주세요.");
+        }
+      }
+      setData((d) => ({
+        properties: d.properties.filter((x) => x.id !== p.id),
+        records: d.records.filter((r) => r.property_id !== p.id),
+      }));
+    });
+  }
+  async function removeRecord(id: string) {
+    if (!confirm("이 가격 기록을 삭제할까요?")) return;
+    await action(async () => {
+      if (mode === "cloud" && supabase) {
+        const { error } = await supabase.from("records").delete().eq("id", id);
+        if (error) {
+          void reportClientError("record.delete", error.code);
+          throw new Error(
+            "가격 기록을 삭제하지 못했습니다. 다시 시도해 주세요.",
+          );
+        }
+      }
+      setData((d) => ({ ...d, records: d.records.filter((r) => r.id !== id) }));
+    });
+  }
+  function exportData() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      }),
+      url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `jipgap-${today()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  function startLocal() {
+    setData(empty);
+    setMode("local");
+    setTab("properties");
+    setMessage(
+      "이 브라우저에 저장됩니다. 기기 간 동기화는 클라우드 연결 후 사용할 수 있습니다.",
+    );
+  }
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <a className="brand" href="/">
+          <span className="brand-icon">
+            <Layers size={23} />
+          </span>
+          집업<span className="brand-en">ZIPUP</span>
+        </a>
+        <div className="workspace">
+          <span className="avatar">{[...profileLabel(profile)][0]}</span>
+          <div>
+            <strong>{profileLabel(profile)}</strong>
+            <small>Personal workspace</small>
+          </div>
+        </div>
+        <span className="nav-label">WORKSPACE</span>
+        <nav>
+          {[
+            ["overview", "가격 간격", ChartNoAxesCombined],
+            ["properties", "보유 · 관심단지", Building2],
+            ["records", "가격 기록", NotebookPen],
+          ].map(([id, label, Icon]) => (
+            <button
+              key={String(id)}
+              className={tab === id ? "active" : ""}
+              onClick={() => setTab(String(id))}
+            >
+              {typeof Icon !== "string" && <Icon size={19} />}
+              <span>{String(label)}</span>
+              {id === "properties" && <em>{data.properties.length}</em>}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="storage">
+            <Cloud size={18} />
+            <strong>
+              {mode === "cloud" ? "클라우드에 저장" : "나만의 부동산 노트"}
+            </strong>
+            <p>
+              {mode === "cloud"
+                ? "어디서든 같은 기록을 확인하세요."
+                : "가격보다 중요한, 가격 사이의 변화."}
+            </p>
+          </div>
+          <button
+            onClick={() => setTab("settings")}
+            className={tab === "settings" ? "active" : ""}
+          >
+            <Settings2 size={19} />
+            설정
+          </button>
+        </div>
+      </aside>
+      <div className="content">
+        <header className="topbar">
+          <span>
+            나의 부동산 <ChevronRight size={14} />{" "}
+            <strong>
+              {tab === "overview"
+                ? "가격 간격"
+                : tab === "properties"
+                  ? "보유 · 관심단지"
+                  : tab === "records"
+                    ? "가격 기록"
+                    : "설정"}
+            </strong>
+          </span>
+          <div className="account-actions">
+            <button className="status" onClick={() => setTab("settings")}>
+              <Cloud size={15} />
+              {mode === "demo"
+                ? "데모 워크스페이스"
+                : mode === "local"
+                  ? "이 기기에 저장 중"
+                  : "클라우드 연결됨"}
+            </button>
+            {session && (
+              <button
+                className="button account-logout"
+                disabled={busy}
+                onClick={logout}
+              >
+                <LogOut size={15} />
+                로그아웃
+              </button>
+            )}
+          </div>
+        </header>
+        <main>
+          {mode === "demo" && (
+            <div className="demo-banner">
+              <span>
+                <Info size={16} />
+                <b>데모 모드</b> 실제 시세가 아닌 가상 데이터로 둘러보고 있어요.
+              </span>
+              <div className="auth-entry">
+                <a href="/auth">로그인 · 회원가입</a>
+                <button onClick={startLocal}>
+                  이 기기에만 기록 <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+          )}
+          {mode === "local" && (
+            <div className="demo-banner">
+              <span>
+                <Info size={16} />이 브라우저에만 저장됩니다. PC·모바일 동기화는
+                클라우드 연결이 필요합니다.
+              </span>
+              <button onClick={() => setTab("settings")}>
+                연결 설정 <ArrowRight size={15} />
+              </button>
+            </div>
+          )}
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">MY REAL ESTATE TRACKER</div>
+              <h1>
+                {tab === "overview"
+                  ? "내 집과의 거리, 한눈에"
+                  : tab === "properties"
+                    ? "나의 단지 모아보기"
+                    : tab === "records"
+                      ? "차곡차곡, 가격 기록"
+                      : "어디서든 이어지는 기록"}
+              </h1>
+              <p>
+                {tab === "overview"
+                  ? "관심단지까지의 가격 간격이 어떻게 달라지고 있는지 살펴보세요."
+                  : tab === "properties"
+                    ? "보유 부동산과 관심단지를 전용면적별로 관리하세요."
+                    : tab === "records"
+                      ? "실거래가와 직접 평가 가격을 구분해 기록합니다."
+                      : "클라우드 저장과 실거래 데이터 연결을 준비하세요."}
+              </p>
+            </div>
+          </div>
+          {message && !modal && (
+            <div role="status" className="message">
+              {message}
+              <button aria-label="알림 닫기" onClick={() => setMessage("")}>
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {!ready ? (
+            <div className="empty">기록을 불러오는 중…</div>
+          ) : tab === "overview" ? (
+            <>
+              <div className="filters">
+                <div className="filter-control">
+                  <span>보유 주택</span>
+                  <select
+                    aria-label="기준 부동산"
+                    value={base}
+                    onChange={(e) => {
+                      setBase(e.target.value);
+                      setBaseKind(null);
+                    }}
+                  >
+                    {(data.properties.some((p) => p.owned)
+                      ? data.properties.filter((p) => p.owned)
+                      : data.properties
+                    ).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {areaGroup(p.area)}㎡
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-control">
+                  <span>보유 주택 가격</span>
+                  <select
+                    aria-label="기준 부동산 가격 기준"
+                    value={effectiveBaseKind}
+                    onChange={(e) => setBaseKind(e.target.value as Kind)}
+                  >
+                    {supportedKinds.map((k) => (
+                      <option key={k} value={k}>
+                        {labels[k]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <span className="filter-note">
+                  관심단지는 실거래가 · {interval === "month" ? "월간" : "주간"}{" "}
+                  중앙값 기준 <Info size={14} />
+                </span>
+              </div>
+              <section className="stats">
+                <div className="stat base-stat">
+                  <div className="stat-title">
+                    <span>
+                      <House size={17} />
+                      기준 부동산
+                    </span>
+                    <span className="tag">
+                      {baseProperty?.owned ? "보유" : "비교 기준"}
+                    </span>
+                  </div>
+                  <h3>{baseProperty?.name || "보유 부동산을 추가하세요"}</h3>
+                  <div className="stat-price">
+                    {money(latest(base)?.[base] as number)}
+                    <span>
+                      {baseProperty ? areaGroup(baseProperty.area) : ""}㎡
+                    </span>
+                  </div>
+                  <p>
+                    {latest(base)?.month || "기록 없음"} ·{" "}
+                    {labels[effectiveBaseKind]} 중앙값
+                  </p>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">
+                    <span>
+                      <Building2 size={17} />
+                      관심단지와의 간격
+                    </span>
+                    <span className="tag light">
+                      {last?.month || "비교 자료 없음"}
+                    </span>
+                  </div>
+                  <select
+                    className="property-select"
+                    aria-label="관심단지 선택"
+                    value={selected}
+                    onChange={(e) => setSelected(e.target.value)}
+                    disabled={!watchProperties.length}
+                  >
+                    <option value="">관심단지를 선택하세요</option>
+                    {watchProperties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="stat-price">
+                    {gap != null && gap > 0 ? "+" : ""}
+                    {money(gap)}
+                    <span>
+                      {gap == null
+                        ? ""
+                        : gap >= 0
+                          ? "추가로 필요한 금액"
+                          : "기준보다 낮은 가격"}
+                    </span>
+                  </div>
+                  <p>
+                    {comparison ? areaGroup(comparison.area) : "—"}㎡ · 관심{" "}
+                    {String(last?.[`gap_target_month_${selected}`] || "—")} · 내
+                    집 {String(last?.[`gap_base_month_${selected}`] || "—")}{" "}
+                    기준
+                  </p>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">
+                    <span>
+                      <ChartNoAxesCombined size={17} />
+                      기간 내 간격 변화
+                    </span>
+                  </div>
+                  <h3>
+                    {interval === "month"
+                      ? months === 12
+                        ? "최근 1년"
+                        : `최근 ${months / 12}년`
+                      : months === 13
+                        ? "최근 3개월"
+                        : months === 26
+                          ? "최근 6개월"
+                          : months === 52
+                            ? "최근 1년"
+                            : "최근 3년"}
+                    의 변화
+                  </h3>
+                  <div
+                    className={`stat-price ${change != null && change < 0 ? "teal" : ""}`}
+                  >
+                    {change != null &&
+                      (change < 0 ? (
+                        <ArrowDownRight size={28} />
+                      ) : (
+                        <ArrowUpRight size={28} />
+                      ))}
+                    {money(change == null ? null : Math.abs(change))}
+                    <span>
+                      {change == null
+                        ? "비교 시점이 더 필요해요"
+                        : change < 0
+                          ? "가까워졌어요"
+                          : change > 0
+                            ? "멀어졌어요"
+                            : "변화 없어요"}
+                    </span>
+                  </div>
+                  <p>
+                    {first && last
+                      ? `${first.month} → ${last.month}`
+                      : "가격을 한 번 더 기록하면 변화를 볼 수 있어요"}
+                  </p>
+                </div>
+              </section>
+              <section className="panel chart-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>
+                      {chart === "gap"
+                        ? "내 집과 관심단지의 가격 차이"
+                        : "단지별 가격 흐름"}{" "}
+                      <span className="badge">관심단지 실거래가</span>
+                    </h2>
+                    <p>
+                      {chart === "gap"
+                        ? "관심단지 실거래가에서 보유 주택 가격을 뺀 금액입니다."
+                        : "보유 주택 가격과 관심단지 실거래가를 함께 봅니다."}
+                    </p>
+                  </div>
+                  <div className="chart-controls">
+                    <select
+                      className="chart-region-filter"
+                      aria-label="그래프 지역"
+                      value={regionId}
+                      onChange={(event) => selectRegion(event.target.value)}
+                    >
+                        <option value="all">
+                          전체 지역 · {data.properties.length}곳
+                        </option>
+                        {regionOptions(data.properties).map((region) => (
+                          <option value={region.id} key={region.id}>
+                            {region.label} · {data.properties.filter((p) => p.district === region.id).length}곳
+                          </option>
+                        ))}
+                    </select>
+                    <div
+                      className="segmented small chart-tabs"
+                      role="tablist"
+                      aria-label="가격 그래프"
+                    >
+                      <button
+                        role="tab"
+                        aria-selected={chart === "price"}
+                        className={chart === "price" ? "chosen" : ""}
+                        onClick={() => setChart("price")}
+                      >
+                        단지별 가격
+                      </button>
+                      <button
+                        role="tab"
+                        aria-selected={chart === "gap"}
+                        className={chart === "gap" ? "chosen" : ""}
+                        onClick={() => setChart("gap")}
+                      >
+                        내 집과 비교
+                      </button>
+                    </div>
+                    <div className="segmented small" aria-label="집계 단위">
+                      <button
+                        className={interval === "month" ? "chosen" : ""}
+                        onClick={() => {
+                          setInterval("month");
+                          setMonths(12);
+                        }}
+                      >
+                        월간
+                      </button>
+                      <button
+                        className={interval === "week" ? "chosen" : ""}
+                        onClick={() => {
+                          setInterval("week");
+                          setMonths(26);
+                        }}
+                      >
+                        주간
+                      </button>
+                    </div>
+                    <select
+                      aria-label="차트 기간"
+                      value={months}
+                      onChange={(e) => setMonths(Number(e.target.value))}
+                    >
+                      {interval === "month" ? (
+                        <>
+                          <option value={12}>최근 1년</option>
+                          <option value={36}>최근 3년</option>
+                          <option value={60}>최근 5년</option>
+                          <option value={120}>최근 10년</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value={13}>최근 3개월</option>
+                          <option value={26}>최근 6개월</option>
+                          <option value={52}>최근 1년</option>
+                          <option value={156}>최근 3년</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                </div>
+                <p className="chart-basis">
+                  보유 주택: {labels[effectiveBaseKind]} · 관심단지: 실거래가 ·{" "}
+                  {interval === "month" ? "월간" : "주간"} 중앙값 · 각 시점의
+                  마지막 확인 가격으로 비교
+                </p>
+                <div className="chart-legend">
+                  {chart === "price" && baseProperty && (() => {
+                    const style = chartStyle(baseProperty);
+                    return (
+                      <span className="chart-legend-item active">
+                        <i style={{ background: style.color }} />
+                        {baseProperty.name}
+                      </span>
+                    );
+                  })()}
+                  {watchProperties.map((p) => {
+                    const active = chartPropertyIds.includes(p.id);
+                    const style = chartStyle(p);
+                    return (
+                      <button
+                        type="button"
+                        key={p.id}
+                        className={`chart-legend-item ${active ? "active" : "inactive"}`}
+                        aria-pressed={active}
+                        onClick={() => toggleChartProperty(p.id)}
+                      >
+                        <i style={{ background: active ? style.color : "#b7c1d0" }} />
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                  <span className="chart-legend-count">
+                    그래프 단지 {selectedChartProperties.length}/10
+                  </span>
+                  <button
+                    type="button"
+                    className="chart-legend-clear"
+                    onClick={() => setChartPropertyIds([])}
+                    disabled={!chartPropertyIds.length}
+                  >
+                    전체 해제
+                  </button>
+                  <small>단위: 억 원</small>
+                </div>
+                <div className="chart">
+                  {!chartEmpty ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={rows}
+                        margin={{ top: 15, right: 20, left: 0, bottom: 0 }}
+                      >
+                        <CartesianGrid
+                          vertical={false}
+                          stroke="#e9edf3"
+                          strokeDasharray="4 4"
+                        />
+                        <XAxis
+                          dataKey="label"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: "#8993a4", fontSize: 12 }}
+                          minTickGap={35}
+                          dy={12}
+                        />
+                        <YAxis
+                          tickFormatter={(v) => `${Number(v) / 10000}`}
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: "#8993a4", fontSize: 12 }}
+                          width={45}
+                        />
+                        <Tooltip
+                          labelFormatter={(_l, p) => p[0]?.payload?.month || ""}
+                          formatter={(v) => money(Number(v))}
+                          contentStyle={{
+                            border: "1px solid #e5e9f1",
+                            borderRadius: 12,
+                            fontSize: 14,
+                          }}
+                        />
+                        {chart === "gap" && (
+                          <ReferenceLine y={0} stroke="#c4cbd8" />
+                        )}
+                        {chartProperties.map((p) => {
+                          const style = chartStyle(p);
+                          return (
+                            <Line
+                              key={p.id}
+                              type="linear"
+                              dataKey={chart === "gap" ? `gap_${p.id}` : p.id}
+                              name={p.name}
+                              stroke={style.color}
+                              strokeDasharray={style.dash}
+                              strokeWidth={p.id === base ? 3 : 2.5}
+                              dot={{ r: 3, strokeWidth: 2, fill: "white" }}
+                              activeDot={{ r: 5 }}
+                              connectNulls
+                              isAnimationActive={false}
+                            />
+                          );
+                        })}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="empty">
+                      <ChartNoAxesCombined size={32} />
+                      <h3>표시할 비교 자료가 없습니다</h3>
+                      <p>{chartEmpty}</p>
+                      <div className="heading-actions">
+                        {chart === "gap" && (
+                          <button
+                            className="button"
+                            onClick={() => setChart("price")}
+                          >
+                            단지별 가격 보기
+                          </button>
+                        )}
+                        <button
+                          className="button"
+                          onClick={() =>
+                            open(data.properties.length ? "record" : "property")
+                          }
+                        >
+                          가격 기록 추가
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="chart-foot">
+                  <Info size={14} />
+                  {interval === "month" ? "월" : "주"}별 가격이 바뀐 시점마다
+                  양쪽의 마지막 확인 가격을 비교합니다. 카드에서 실제 기준
+                  시점을 확인하세요.
+                </div>
+              </section>
+              <section className="watch-section">
+                <div className="section-title">
+                  <h2>
+                    관심단지{" "}
+                    <span>{watchProperties.length}</span>
+                  </h2>
+                  <button onClick={() => open("property")}>
+                    <Plus size={16} />
+                    단지 추가
+                  </button>
+                </div>
+                <div className="watch-grid">
+                  {watchProperties.map((p) => {
+                      const r = [...rows]
+                        .reverse()
+                        .find((r) => typeof r[`gap_${p.id}`] === "number");
+                      const history = rows.filter(
+                        (r) => typeof r[p.id] === "number",
+                      );
+                      return (
+                        <button
+                          className={`watch-card ${selected === p.id ? "selected" : ""}`}
+                          key={p.id}
+                          onClick={() => {
+                            setSelected(p.id);
+                            setChart("gap");
+                          }}
+                        >
+                          <div className="watch-top">
+                            <span
+                              className="building-icon"
+                              style={{
+                                color: p.color,
+                                background: `${p.color}12`,
+                              }}
+                            >
+                              <Building2 size={21} />
+                            </span>
+                            <span>
+                              {p.dong} · {areaGroup(p.area)}㎡
+                            </span>
+                            <ArrowUpRight size={17} />
+                          </div>
+                          <h3>{p.name}</h3>
+                          <div className="watch-price">
+                            {money(history.at(-1)?.[p.id] as number)}
+                            <small>
+                              {history.at(-1)?.month || "기록 없음"}
+                            </small>
+                          </div>
+                          <div className="spark">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={rows}>
+                                <Area
+                                  dot={{ r: 2 }}
+                                  connectNulls
+                                  dataKey={p.id}
+                                  stroke={p.color}
+                                  fill={`${p.color}12`}
+                                  strokeWidth={2}
+                                  isAnimationActive={false}
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="watch-footer">
+                            <span>내 집과의 간격</span>
+                            <strong style={{ color: p.color }}>
+                              {money(r?.[`gap_${p.id}`] as number)}
+                            </strong>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  <button className="add-card" onClick={() => open("property")}>
+                    <span>
+                      <Plus size={23} />
+                    </span>
+                    <strong>다음으로 눈여겨볼 집</strong>
+                    <p>관심단지를 추가하고 함께 비교하세요</p>
+                  </button>
+                </div>
+              </section>
+            </>
+          ) : tab === "properties" ? (
+            <section className="panel">
+              <div className="panel-heading">
+                <h2>보유 · 관심단지 {visibleProperties.length}곳</h2>
+                <div className="heading-actions">
+                  <select
+                    className="inline-region-filter"
+                    aria-label="단지 지역"
+                    value={regionId}
+                    onChange={(event) => selectRegion(event.target.value)}
+                  >
+                      <option value="all">전체 지역 · {data.properties.length}곳</option>
+                      {regionOptions(data.properties).map((region) => (
+                        <option value={region.id} key={region.id}>
+                          {region.label} · {data.properties.filter((p) => p.district === region.id).length}곳
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    className="button primary"
+                    onClick={() => open("property")}
+                  >
+                    <Plus size={16} />
+                    단지 추가
+                  </button>
+                </div>
+              </div>
+              <div className="property-list">
+                {!visibleProperties.length && (
+                  <div className="empty">보유 부동산부터 추가해 보세요.</div>
+                )}
+                {visibleProperties
+                  .toSorted(
+                    (a, b) =>
+                      propertyRegionLabel(a).localeCompare(
+                        propertyRegionLabel(b),
+                        "ko",
+                      ) || a.name.localeCompare(b.name, "ko"),
+                  )
+                  .map((p) => (
+                  <div className="property-row" key={p.id}>
+                    <div className="building-icon">
+                      <Building2 />
+                    </div>
+                    <div>
+                      <h3>
+                        {p.name}{" "}
+                        <span
+                          className={`badge ${p.owned ? "owned-badge" : "watch-badge"}`}
+                        >
+                          {p.owned ? "보유" : "관심"}
+                        </span>
+                      </h3>
+                      <p>
+                        <strong className="property-region-name">
+                          {propertyRegionLabel(p)}
+                        </strong>
+                        {" · "}
+                        {p.dong} · 전용 {areaGroup(p.area)}㎡
+                      </p>
+                    </div>
+                    <div className="row-actions">
+                      <button
+                        className="button"
+                        onClick={() => open("record", p)}
+                      >
+                        가격 기록
+                      </button>
+                      <button
+                        className="button"
+                        onClick={() => open("property", p)}
+                      >
+                        수정
+                      </button>
+                      <button
+                        aria-label={`${p.name} 삭제`}
+                        disabled={busy}
+                        onClick={() => removeProperty(p)}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : tab === "records" ? (
+            <section className="panel">
+              <div className="panel-heading records-heading">
+                <div>
+                  <h2>
+                    가격 기록 <span className="badge">{recent.length}건</span>
+                  </h2>
+                  <p>단지와 기간을 선택하거나 단지명·출처·메모를 검색하세요.</p>
+                </div>
+                <div className="segmented">
+                  {supportedKinds.map((k) => (
+                    <button
+                      key={k}
+                      className={kind === k ? "chosen" : ""}
+                      onClick={() => setKind(k)}
+                    >
+                      {labels[k]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="record-filters">
+                <select
+                  aria-label="기록 지역"
+                  value={regionId}
+                  onChange={(event) => selectRegion(event.target.value)}
+                >
+                  <option value="all">전체 지역 · {data.properties.length}곳</option>
+                  {regionOptions(data.properties).map((region) => (
+                    <option value={region.id} key={region.id}>
+                      {region.label} · {data.properties.filter((p) => p.district === region.id).length}곳
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="기록 단지"
+                  value={recordProperty}
+                  onChange={(event) => setRecordProperty(event.target.value)}
+                >
+                  <option value="all">전체 단지</option>
+                  {visibleProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name} · {areaGroup(property.area)}㎡
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="기록 기간"
+                  value={recordYears ?? "all"}
+                  onChange={(event) =>
+                    setRecordYears(
+                      event.target.value === "all"
+                        ? null
+                        : Number(event.target.value),
+                    )
+                  }
+                >
+                  <option value="all">전체 기간</option>
+                  <option value="1">최근 1년</option>
+                  <option value="3">최근 3년</option>
+                  <option value="5">최근 5년</option>
+                </select>
+                <input
+                  aria-label="가격 기록 검색"
+                  value={recordQuery}
+                  onChange={(event) => setRecordQuery(event.target.value)}
+                  placeholder="단지명, 출처, 메모 검색"
+                />
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>기준일</th>
+                      <th>단지</th>
+                      <th>지역</th>
+                      <th>가격</th>
+                      <th>출처 / 메모</th>
+                      <th>관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.date}</td>
+                        <td>{propertyById.get(r.property_id)?.name}</td>
+                        <td>
+                          {propertyById.get(r.property_id)
+                            ? propertyRegionLabel(propertyById.get(r.property_id)!)
+                            : "—"}
+                        </td>
+                        <td>
+                          <strong>{money(r.price)}</strong>
+                        </td>
+                        <td>
+                          {r.source}
+                          <small>{r.note}</small>
+                        </td>
+                        <td>
+                          <button
+                            disabled={busy}
+                            aria-label={`${r.date} 기록 삭제`}
+                            onClick={() => removeRecord(r.id)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!recent.length && (
+                  <div className="empty">조건에 맞는 가격 기록이 없습니다.</div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <div className="settings-grid">
+              <section className="panel settings-panel">
+                <Cloud size={25} />
+                <h2>클라우드 동기화</h2>
+                <p>
+                  집업 계정으로 로그인하면 PC와 모바일에서 같은 기록을 볼 수
+                  있습니다. 현재 브라우저의 기록은 자동으로 업로드되지 않습니다.
+                </p>
+                <div className="connection">
+                  {supabase ? "연결 설정됨" : "Supabase 연결 설정 대기"}
+                </div>
+                {session ? (
+                  <>
+                    <p>
+                      <strong>{profileLabel(profile)}</strong>으로
+                      로그인했습니다.
+                    </p>
+                    <button className="button" disabled={busy} onClick={logout}>
+                      <LogOut size={16} />
+                      로그아웃
+                    </button>
+                  </>
+                ) : (
+                  <div className="auth-entry">
+                    <a className="button primary" href="/auth">
+                      로그인 · 회원가입
+                    </a>
+                  </div>
+                )}
+                <p className="muted">
+                  모든 계정은 동일한 기능을 사용하며, 본인의 기록만 볼 수
+                  있습니다.
+                </p>
+              </section>
+              {session && (
+                <ProfileSettings profile={profile} onSaved={setProfile} />
+              )}
+              <section className="panel settings-panel">
+                <Download size={25} />
+                <h2>기록 백업</h2>
+                <p>
+                  단지 정보와 전체 가격 기록을 JSON 파일로 내려받습니다. 장기
+                  보관이나 다른 도구로 이동할 때 사용할 수 있습니다.
+                </p>
+                <button className="button" onClick={exportData}>
+                  <Download size={16} />
+                  전체 기록 내려받기
+                </button>
+              </section>
+              <section className="panel settings-panel">
+                <Info size={25} />
+                <h2>가격 간격 계산 방식</h2>
+                <p>
+                  월간 또는 주간 중앙값을 사용하며 기준 부동산과 관심단지의 가격
+                  종류를 각각 선택할 수 있습니다. 관심단지 가격에서 기준 부동산
+                  가격을 뺍니다.
+                </p>
+                <p>
+                  각 시점의 마지막 확인 가격을 비교합니다. 단순 매매가격
+                  차이이며 세금·대출·거래 비용은 포함하지 않습니다.
+                </p>
+              </section>
+              <SupportForm loggedIn={Boolean(session)} screen="설정" />
+            </div>
+          )}
+          <footer>
+            <span>
+              <Layers size={14} />
+              집업
+            </span>
+            <span>나의 기록으로 만드는, 다음 집의 기준.</span>
+          </footer>
+        </main>
+      </div>
+      <dialog
+        ref={dialog}
+        onCancel={(e) => {
+          if (busy) e.preventDefault();
+          else setModal(null);
+        }}
+        onClose={() => {
+          if (!busy) setModal(null);
+        }}
+      >
+        <div className="modal-header">
+          <h2>
+            {modal === "property"
+              ? editing
+                ? "단지 수정"
+                : "새 단지 추가"
+              : modal === "record"
+                ? "가격 기록하기"
+                : "내 계정으로 로그인"}
+          </h2>
+          <button
+            aria-label="닫기"
+            disabled={busy}
+            onClick={() => setModal(null)}
+          >
+            <X size={21} />
+          </button>
+        </div>
+        {modal === "property" ? (
+          <form onSubmit={saveProperty}>
+            <label>
+              구분
+              <select
+                name="owned"
+                defaultValue={editing?.owned ? "true" : "false"}
+              >
+                <option value="false">관심단지</option>
+                <option value="true">보유 부동산</option>
+              </select>
+            </label>
+            <PropertyAddress key={editing?.id || "new"} property={editing} />
+            <p className="muted">
+              선택한 주소와 실거래 단지 식별값을 기준으로 조회합니다. 전용면적은
+              소수점 아래를 버려 같은 정수 면적끼리 함께 조회합니다.
+            </p>
+            {!editing && (
+              <>
+                <div className="form-row">
+                  <label>
+                    실거래 조회 시작 월
+                    <MonthPicker
+                      name="start"
+                      disabled={busy}
+                      min="2006-01"
+                      max={today().slice(0, 7)}
+                      defaultValue={`${today().slice(0, 4)}-01`}
+                    />
+                  </label>
+                  <label>
+                    종료 월
+                    <MonthPicker
+                      name="end"
+                      disabled={busy}
+                      min="2006-01"
+                      max={today().slice(0, 7)}
+                      defaultValue={today().slice(0, 7)}
+                    />
+                  </label>
+                </div>
+                {mode !== "cloud" && (
+                  <p className="notice">
+                    클라우드 로그인 상태에서 단지를 추가하면 선택 기간의
+                    실거래가도 함께 저장됩니다.
+                  </p>
+                )}
+              </>
+            )}
+            {editing && (
+              <p className="muted">
+                기존 가격 기록은 유지됩니다. 다른 단지나 다른 면적으로 바꾸려면
+                새 단지로 추가해 주세요.
+              </p>
+            )}
+            <button className="button primary full" disabled={busy}>
+              {busy
+                ? "처리 중…"
+                : editing
+                  ? "저장하기"
+                  : "단지 추가 및 실거래 불러오기"}
+            </button>
+          </form>
+        ) : modal === "record" ? (
+          <>
+            <div
+              className="segmented"
+              role="tablist"
+              aria-label="가격 기록 방식"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={recordMode === "manual"}
+                className={recordMode === "manual" ? "chosen" : ""}
+                onClick={() => {
+                  setRecordMode("manual");
+                  setMessage("");
+                }}
+              >
+                직접 입력
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={recordMode === "trade"}
+                className={recordMode === "trade" ? "chosen" : ""}
+                onClick={() => {
+                  setRecordMode("trade");
+                  setMessage("");
+                }}
+              >
+                실거래 다시 조회
+              </button>
+            </div>
+            {recordMode === "manual" ? (
+              <form onSubmit={saveRecord}>
+                <label>
+                  단지
+                  <select name="property" defaultValue={target} required>
+                    {data.properties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {areaGroup(p.area)}㎡
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="form-row">
+                  <label>
+                    가격 기준
+                    <select name="kind" defaultValue={kind}>
+                      {supportedKinds.map((k) => (
+                        <option value={k} key={k}>
+                          {labels[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    기준일
+                    <input
+                      name="date"
+                      type="date"
+                      max={today()}
+                      defaultValue={today()}
+                      required
+                    />
+                  </label>
+                </div>
+                <label>
+                  가격 (억 원)
+                  <input
+                    name="price"
+                    type="number"
+                    required
+                    min="0.0001"
+                    max="9999"
+                    step="0.0001"
+                    placeholder="예: 16.5"
+                  />
+                </label>
+                <label>
+                  메모
+                  <input
+                    name="note"
+                    maxLength={500}
+                    placeholder="예: 12층 · 남향 · 내부 수리 완료"
+                  />
+                </label>
+                <button className="button primary full" disabled={busy}>
+                  가격 기록 저장
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={reloadTrades}>
+                <label>
+                  단지
+                  <select name="property" defaultValue={target} required>
+                    {data.properties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {areaGroup(p.area)}㎡
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="form-row">
+                  <label>
+                    조회 시작 월
+                    <MonthPicker
+                      name="start"
+                      disabled={busy}
+                      min="2006-01"
+                      max={today().slice(0, 7)}
+                      defaultValue={`${today().slice(0, 4)}-01`}
+                    />
+                  </label>
+                  <label>
+                    종료 월
+                    <MonthPicker
+                      name="end"
+                      disabled={busy}
+                      min="2006-01"
+                      max={today().slice(0, 7)}
+                      defaultValue={today().slice(0, 7)}
+                    />
+                  </label>
+                </div>
+                {mode !== "cloud" && (
+                  <p className="notice">
+                    실거래가를 다시 조회하려면 로그인해 주세요.
+                  </p>
+                )}
+                <button
+                  className="button primary full"
+                  disabled={busy || mode !== "cloud"}
+                >
+                  {busy ? "조회 중…" : "선택 기간 실거래 다시 조회"}
+                </button>
+              </form>
+            )}
+          </>
+        ) : null}
+        {message && modal && (
+          <div role="status" className="notice">
+            {message}
+          </div>
+        )}
+      </dialog>
+    </div>
+  );
 }
