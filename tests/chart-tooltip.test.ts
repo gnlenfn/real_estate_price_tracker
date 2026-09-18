@@ -10,8 +10,7 @@ test("tooltip values are ordered from highest to lowest", () => {
   ];
 
   const sorted = entries.toSorted(
-    (left, right) =>
-      descendingTooltipValueKey(left) - descendingTooltipValueKey(right),
+    (left, right) => descendingTooltipValueKey(left) - descendingTooltipValueKey(right),
   );
 
   assert.deepEqual(

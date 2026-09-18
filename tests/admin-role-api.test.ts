@@ -1,2 +1,20 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {join} from 'node:path';const root=join(import.meta.dirname,'..'),read=(p:string)=>readFileSync(join(root,p),'utf8');
-test('administrator role APIs require super admin and use role RPCs',()=>{const files=['app/api/admin/admins/route.ts','app/api/admin/admins/[userId]/route.ts','app/api/admin/admins/transfer/route.ts'].map(read).join('\n');assert.match(files,/requireSuperAdmin/);assert.match(files,/grant_admin/);assert.match(files,/revoke_admin/);assert.match(files,/transfer_super_admin/);assert.doesNotMatch(files,/\.email/);});
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+const root = join(import.meta.dirname, ".."),
+  read = (p: string) => readFileSync(join(root, p), "utf8");
+test("administrator role APIs require super admin and use role RPCs", () => {
+  const files = [
+    "app/api/admin/admins/route.ts",
+    "app/api/admin/admins/[userId]/route.ts",
+    "app/api/admin/admins/transfer/route.ts",
+  ]
+    .map(read)
+    .join("\n");
+  assert.match(files, /requireSuperAdmin/);
+  assert.match(files, /grant_admin/);
+  assert.match(files, /revoke_admin/);
+  assert.match(files, /transfer_super_admin/);
+  assert.doesNotMatch(files, /\.email/);
+});

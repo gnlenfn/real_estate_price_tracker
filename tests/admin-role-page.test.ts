@@ -1,2 +1,15 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {join} from 'node:path';const root=join(import.meta.dirname,'..'),read=(p:string)=>readFileSync(join(root,p),'utf8');
-test('admin navigation and role page expose role management without email',()=>{const page=read('app/admin/admins/page.tsx'),nav=read('app/components/admin-nav.tsx');assert.match(nav,/관리자 관리/);assert.match(page,/최고 관리자/);assert.match(page,/관리자 추가/);assert.match(page,/최고 관리자 이전/);assert.doesNotMatch(page,/email/i);});
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+const root = join(import.meta.dirname, ".."),
+  read = (p: string) => readFileSync(join(root, p), "utf8");
+test("admin navigation and role page expose role management without email", () => {
+  const page = read("app/admin/admins/page.tsx"),
+    nav = read("app/components/admin-nav.tsx");
+  assert.match(nav, /관리자 관리/);
+  assert.match(page, /최고 관리자/);
+  assert.match(page, /관리자 추가/);
+  assert.match(page, /최고 관리자 이전/);
+  assert.doesNotMatch(page, /email/i);
+});

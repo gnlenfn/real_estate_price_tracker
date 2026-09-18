@@ -1,1 +1,1 @@
-export const TRADE_SYNC_CONCURRENCY=10;
+export const TRADE_SYNC_CONCURRENCY = 10;

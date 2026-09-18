@@ -1,0 +1,7 @@
+.next
+node_modules
+.superpowers
+README.md
+docs
+supabase/.branches
+supabase/.temp

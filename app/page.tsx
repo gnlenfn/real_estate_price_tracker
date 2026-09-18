@@ -32,12 +32,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { areaGroup } from "@/lib/area";
-import {
-  currentKoreaMonth,
-  runTradeSync,
-  syncMonths,
-  syncSummary,
-} from "@/lib/trade-sync";
+import { currentKoreaMonth, runTradeSync, syncMonths, syncSummary } from "@/lib/trade-sync";
 import { PropertyAddress } from "@/app/components/property-address";
 import { MonthPicker } from "@/app/components/month-picker";
 import { ProfileSettings } from "@/app/components/profile-settings";
@@ -65,18 +60,12 @@ import {
   selectableBulkProperties,
   toggleSelectedPropertyId,
 } from "@/lib/bulk-trade";
-import {
-  propertyRegionLabel,
-  regionOptions,
-} from "@/lib/property-context";
+import { propertyRegionLabel, regionOptions } from "@/lib/property-context";
 import { profileLabel, type Profile } from "@/lib/profile";
 import { tradeMonthsForNewProperty } from "@/lib/property-create";
 import { reportClientError } from "@/lib/client-error";
 import { descendingTooltipValueKey } from "@/lib/chart-tooltip";
-import {
-  groupPropertiesByComplex,
-  propertyAreaLabel,
-} from "@/lib/property-display";
+import { groupPropertiesByComplex, propertyAreaLabel } from "@/lib/property-display";
 import type { Session } from "@supabase/supabase-js";
 const empty: Data = { properties: [], records: [] };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -99,9 +88,7 @@ export default function Page() {
   const [recordProperty, setRecordProperty] = useState("all"),
     [recordQuery, setRecordQuery] = useState(""),
     [recordYears, setRecordYears] = useState<number | null>(1);
-  const [modal, setModal] = useState<
-      "property" | "record" | "bulk-trade" | null
-    >(null),
+  const [modal, setModal] = useState<"property" | "record" | "bulk-trade" | null>(null),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [editing, setEditing] = useState<Property | null>(null),
@@ -130,8 +117,7 @@ export default function Page() {
     const version = ++loadVersion.current;
     const profileRequest = supabase.rpc("ensure_profile").single();
     const p = await supabase.from("properties").select("*").order("name");
-    if (p.error)
-      throw new Error("단지를 불러오지 못했습니다. 연결 설정을 확인해 주세요.");
+    if (p.error) throw new Error("단지를 불러오지 못했습니다. 연결 설정을 확인해 주세요.");
     const records: PriceRecord[] = [];
     for (let offset = 0; ; offset += 1000) {
       const r = await supabase
@@ -140,10 +126,7 @@ export default function Page() {
         .order("date", { ascending: false })
         .order("id")
         .range(offset, offset + 999);
-      if (r.error)
-        throw new Error(
-          "가격 기록을 불러오지 못했습니다. 연결을 확인해 주세요.",
-        );
+      if (r.error) throw new Error("가격 기록을 불러오지 못했습니다. 연결을 확인해 주세요.");
       records.push(...r.data);
       if (r.data.length < 1000) break;
     }
@@ -194,9 +177,7 @@ export default function Page() {
       try {
         localStorage.setItem("jipgap-local", JSON.stringify(data));
       } catch {
-        setMessage(
-          "이 브라우저에 저장하지 못했습니다. 백업을 내려받아 주세요.",
-        );
+        setMessage("이 브라우저에 저장하지 못했습니다. 백업을 내려받아 주세요.");
       }
     }
   }, [data, mode, ready]);
@@ -223,23 +204,11 @@ export default function Page() {
       ? "estimate"
       : "trade");
   const rows = useMemo(
-    () =>
-      series(
-        data,
-        base,
-        "trade",
-        months,
-        new Date(),
-        effectiveBaseKind,
-        interval,
-      ),
+    () => series(data, base, "trade", months, new Date(), effectiveBaseKind, interval),
     [data, base, months, effectiveBaseKind, interval],
   );
   const visibleProperties = useMemo(
-    () =>
-      data.properties.filter(
-        (p) => regionId === "all" || p.district === regionId,
-      ),
+    () => data.properties.filter((p) => regionId === "all" || p.district === regionId),
     [data.properties, regionId],
   );
   const selectableProperties = useMemo(
@@ -247,10 +216,7 @@ export default function Page() {
     [data.properties, regionId],
   );
   const selectedProperties = useMemo(
-    () =>
-      selectableProperties.filter((property) =>
-        selectedPropertyIds.includes(property.id),
-      ),
+    () => selectableProperties.filter((property) => selectedPropertyIds.includes(property.id)),
     [selectableProperties, selectedPropertyIds],
   );
   const bulkTradeModal = modal === "bulk-trade";
@@ -315,30 +281,19 @@ export default function Page() {
             )
           ][1],
         };
-  const chartEmpty = chart === "gap" && !selectedChartProperties.length
-    ? "그래프에 표시할 관심단지를 선택해 주세요."
-    : chartAvailability(
-        data,
-        rows,
-        base,
-        "trade",
-        effectiveBaseKind,
-        chart,
-        chartPropertyIds,
-      );
-  const comparable = rows.filter(
-    (r) => typeof r[`gap_${selected}`] === "number",
-  );
+  const chartEmpty =
+    chart === "gap" && !selectedChartProperties.length
+      ? "그래프에 표시할 관심단지를 선택해 주세요."
+      : chartAvailability(data, rows, base, "trade", effectiveBaseKind, chart, chartPropertyIds);
+  const comparable = rows.filter((r) => typeof r[`gap_${selected}`] === "number");
   const last = comparable.at(-1),
     first = comparable[0];
   const gap = last?.[`gap_${selected}`] as number | undefined;
   const change =
     last && first && last !== first
-      ? (last[`gap_${selected}`] as number) -
-        (first[`gap_${selected}`] as number)
+      ? (last[`gap_${selected}`] as number) - (first[`gap_${selected}`] as number)
       : null;
-  const latest = (id: string) =>
-    [...rows].reverse().find((r) => typeof r[id] === "number");
+  const latest = (id: string) => [...rows].reverse().find((r) => typeof r[id] === "number");
   useEffect(() => {
     chartSelectionInitialized.current = false;
     setChartPropertyIds([]);
@@ -353,13 +308,10 @@ export default function Page() {
       const available = new Set(watchProperties.map((p) => p.id));
       setChartPropertyIds((ids) => ids.filter((id) => available.has(id)));
     }
-    if (!watchProperties.some((p) => p.id === selected))
-      setSelected(watchProperties[0]?.id || "");
+    if (!watchProperties.some((p) => p.id === selected)) setSelected(watchProperties[0]?.id || "");
   }, [watchProperties, selected]);
   useEffect(() => {
-    setSelectedPropertyIds((ids) =>
-      reconcileSelectedPropertyIds(data.properties, regionId, ids),
-    );
+    setSelectedPropertyIds((ids) => reconcileSelectedPropertyIds(data.properties, regionId, ids));
   }, [data.properties, regionId]);
   const recent = useMemo(
     () =>
@@ -380,10 +332,7 @@ export default function Page() {
     setRegionId(nextRegionId);
     const nextWatch = data.properties
       .filter(
-        (p) =>
-          (nextRegionId === "all" || p.district === nextRegionId) &&
-          p.id !== base &&
-          !p.owned,
+        (p) => (nextRegionId === "all" || p.district === nextRegionId) && p.id !== base && !p.owned,
       )
       .toSorted((a, b) => a.name.localeCompare(b.name, "ko"));
     setChartPropertyIds(nextWatch.slice(0, 5).map((p) => p.id));
@@ -391,9 +340,7 @@ export default function Page() {
     if (
       recordProperty !== "all" &&
       !data.properties.some(
-        (p) =>
-          p.id === recordProperty &&
-          (nextRegionId === "all" || p.district === nextRegionId),
+        (p) => p.id === recordProperty && (nextRegionId === "all" || p.district === nextRegionId),
       )
     )
       setRecordProperty("all");
@@ -414,9 +361,7 @@ export default function Page() {
   function toggleAllProperties() {
     const visibleIds = selectableProperties.map((property) => property.id);
     setSelectedPropertyIds((ids) =>
-      visibleIds.length > 0 && visibleIds.every((id) => ids.includes(id))
-        ? []
-        : visibleIds,
+      visibleIds.length > 0 && visibleIds.every((id) => ids.includes(id)) ? [] : visibleIds,
     );
   }
   function openBulkTradeReload() {
@@ -446,8 +391,7 @@ export default function Page() {
     if (!supabase || busy) return;
     await action(async () => {
       const { error } = await supabase!.auth.signOut({ scope: "local" });
-      if (error)
-        throw new Error("로그아웃하지 못했습니다. 다시 시도해 주세요.");
+      if (error) throw new Error("로그아웃하지 못했습니다. 다시 시도해 주세요.");
       window.location.assign("/auth");
     });
   }
@@ -463,8 +407,7 @@ export default function Page() {
           dong: String(f.get("dong")).trim(),
           area: areaGroup(Number(f.get("area"))),
           owned: f.get("owned") === "true",
-          color:
-            editing?.color || colors[data.properties.length % colors.length],
+          color: editing?.color || colors[data.properties.length % colors.length],
           apt_seq: String(f.get("apt_seq") || "").trim() || null,
           kakao_place_id: String(f.get("kakao_place_id") || "").trim() || null,
           road_address: String(f.get("road_address") || "").trim(),
@@ -487,9 +430,7 @@ export default function Page() {
           .upsert({ ...p, user_id: session!.user.id });
         if (error) {
           void reportClientError("property.save", error.code);
-          throw new Error(
-            "단지 정보를 저장하지 못했습니다. 다시 시도해 주세요.",
-          );
+          throw new Error("단지 정보를 저장하지 못했습니다. 다시 시도해 주세요.");
         }
       }
       setData((d) => ({
@@ -516,8 +457,7 @@ export default function Page() {
             const {
               data: { session: s },
             } = await client.auth.getSession();
-            if (!s || s.user.id !== owner)
-              throw new Error("로그인을 다시 해 주세요.");
+            if (!s || s.user.id !== owner) throw new Error("로그인을 다시 해 주세요.");
             const res = await fetch("/api/trades", {
               method: "POST",
               headers: {
@@ -528,8 +468,7 @@ export default function Page() {
               signal: AbortSignal.timeout(65000),
             });
             const result = await res.json();
-            if (!res.ok)
-              throw new Error(result.error || "조회에 실패했습니다.");
+            if (!res.ok) throw new Error(result.error || "조회에 실패했습니다.");
             return result.count as number;
           },
           setMessage,
@@ -575,9 +514,7 @@ export default function Page() {
           .insert({ ...r, user_id: session!.user.id });
         if (error) {
           void reportClientError("record.save", error.code);
-          throw new Error(
-            "가격 기록을 저장하지 못했습니다. 다시 시도해 주세요.",
-          );
+          throw new Error("가격 기록을 저장하지 못했습니다. 다시 시도해 주세요.");
         }
       }
       setData((d) => ({ ...d, records: [...d.records, r] }));
@@ -593,14 +530,9 @@ export default function Page() {
     await action(async () => {
       if (mode !== "cloud" || !supabase || !session)
         throw new Error("실거래가는 로그인 후 다시 조회할 수 있습니다.");
-      const property = data.properties.find(
-        (p) => p.id === String(f.get("property")),
-      );
+      const property = data.properties.find((p) => p.id === String(f.get("property")));
       if (!property) throw new Error("조회할 단지를 선택해 주세요.");
-      const selectedMonths = syncMonths(
-          String(f.get("start")),
-          String(f.get("end")),
-        ),
+      const selectedMonths = syncMonths(String(f.get("start")), String(f.get("end"))),
         client = supabase,
         owner = session.user.id;
       const results = await runTradeSync(
@@ -610,8 +542,7 @@ export default function Page() {
           const {
             data: { session: s },
           } = await client.auth.getSession();
-          if (!s || s.user.id !== owner)
-            throw new Error("로그인을 다시 해 주세요.");
+          if (!s || s.user.id !== owner) throw new Error("로그인을 다시 해 주세요.");
           const res = await fetch("/api/trades", {
             method: "POST",
             headers: {
@@ -642,12 +573,8 @@ export default function Page() {
     await action(async () => {
       if (mode !== "cloud" || !supabase || !session)
         throw new Error("실거래가는 로그인 후 다시 조회할 수 있습니다.");
-      if (!selectedProperties.length)
-        throw new Error("조회할 부동산을 선택해 주세요.");
-      const selectedMonths = syncMonths(
-          String(f.get("bulk-start")),
-          String(f.get("bulk-end")),
-        ),
+      if (!selectedProperties.length) throw new Error("조회할 부동산을 선택해 주세요.");
+      const selectedMonths = syncMonths(String(f.get("bulk-start")), String(f.get("bulk-end"))),
         properties = [...selectedProperties],
         client = supabase,
         owner = session.user.id;
@@ -659,8 +586,7 @@ export default function Page() {
           const {
             data: { session: s },
           } = await client.auth.getSession();
-          if (!s || s.user.id !== owner)
-            throw new Error("로그인을 다시 해 주세요.");
+          if (!s || s.user.id !== owner) throw new Error("로그인을 다시 해 주세요.");
           const res = await fetch("/api/trades", {
             method: "POST",
             headers: {
@@ -690,10 +616,7 @@ export default function Page() {
     if (!confirm(`${p.name}과 연결된 모든 가격 기록을 삭제할까요?`)) return;
     await action(async () => {
       if (mode === "cloud" && supabase) {
-        const { error } = await supabase
-          .from("properties")
-          .delete()
-          .eq("id", p.id);
+        const { error } = await supabase.from("properties").delete().eq("id", p.id);
         if (error) {
           void reportClientError("property.delete", error.code);
           throw new Error("단지를 삭제하지 못했습니다. 다시 시도해 주세요.");
@@ -712,9 +635,7 @@ export default function Page() {
         const { error } = await supabase.from("records").delete().eq("id", id);
         if (error) {
           void reportClientError("record.delete", error.code);
-          throw new Error(
-            "가격 기록을 삭제하지 못했습니다. 다시 시도해 주세요.",
-          );
+          throw new Error("가격 기록을 삭제하지 못했습니다. 다시 시도해 주세요.");
         }
       }
       setData((d) => ({ ...d, records: d.records.filter((r) => r.id !== id) }));
@@ -735,9 +656,7 @@ export default function Page() {
     setData(empty);
     setMode("local");
     setTab("properties");
-    setMessage(
-      "이 브라우저에 저장됩니다. 기기 간 동기화는 클라우드 연결 후 사용할 수 있습니다.",
-    );
+    setMessage("이 브라우저에 저장됩니다. 기기 간 동기화는 클라우드 연결 후 사용할 수 있습니다.");
   }
   return (
     <div className="shell">
@@ -777,19 +696,14 @@ export default function Page() {
         <div className="sidebar-bottom">
           <div className="storage">
             <Cloud size={18} />
-            <strong>
-              {mode === "cloud" ? "클라우드에 저장" : "나만의 부동산 노트"}
-            </strong>
+            <strong>{mode === "cloud" ? "클라우드에 저장" : "나만의 부동산 노트"}</strong>
             <p>
               {mode === "cloud"
                 ? "어디서든 같은 기록을 확인하세요."
                 : "가격보다 중요한, 가격 사이의 변화."}
             </p>
           </div>
-          <button
-            onClick={() => setTab("settings")}
-            className={tab === "settings" ? "active" : ""}
-          >
+          <button onClick={() => setTab("settings")} className={tab === "settings" ? "active" : ""}>
             <Settings2 size={19} />
             설정
           </button>
@@ -804,11 +718,11 @@ export default function Page() {
                 ? "가격 간격"
                 : tab === "scenarios"
                   ? "가격 시나리오"
-                : tab === "properties"
-                  ? "보유 · 관심단지"
-                  : tab === "records"
-                    ? "가격 기록"
-                    : "설정"}
+                  : tab === "properties"
+                    ? "보유 · 관심단지"
+                    : tab === "records"
+                      ? "가격 기록"
+                      : "설정"}
             </strong>
           </span>
           <div className="account-actions">
@@ -821,11 +735,7 @@ export default function Page() {
                   : "클라우드 연결됨"}
             </button>
             {session && (
-              <button
-                className="button account-logout"
-                disabled={busy}
-                onClick={logout}
-              >
+              <button className="button account-logout" disabled={busy} onClick={logout}>
                 <LogOut size={15} />
                 로그아웃
               </button>
@@ -850,8 +760,8 @@ export default function Page() {
           {mode === "local" && (
             <div className="demo-banner">
               <span>
-                <Info size={16} />이 브라우저에만 저장됩니다. PC·모바일 동기화는
-                클라우드 연결이 필요합니다.
+                <Info size={16} />이 브라우저에만 저장됩니다. PC·모바일 동기화는 클라우드 연결이
+                필요합니다.
               </span>
               <button onClick={() => setTab("settings")}>
                 연결 설정 <ArrowRight size={15} />
@@ -866,22 +776,22 @@ export default function Page() {
                   ? "내 집과의 거리, 한눈에"
                   : tab === "scenarios"
                     ? "가격이 움직이면, 격차는?"
-                  : tab === "properties"
-                    ? "나의 단지 모아보기"
-                    : tab === "records"
-                      ? "차곡차곡, 가격 기록"
-                      : "어디서든 이어지는 기록"}
+                    : tab === "properties"
+                      ? "나의 단지 모아보기"
+                      : tab === "records"
+                        ? "차곡차곡, 가격 기록"
+                        : "어디서든 이어지는 기록"}
               </h1>
               <p>
                 {tab === "overview"
                   ? "관심단지까지의 가격 간격이 어떻게 달라지고 있는지 살펴보세요."
                   : tab === "scenarios"
                     ? "내 집과 관심단지가 같은 비율로 움직일 때 가격 격차를 비교하세요."
-                  : tab === "properties"
-                    ? "보유 부동산과 관심단지를 전용면적별로 관리하세요."
-                    : tab === "records"
-                      ? "실거래가와 직접 평가 가격을 구분해 기록합니다."
-                      : "클라우드 저장과 실거래 데이터 연결을 준비하세요."}
+                    : tab === "properties"
+                      ? "보유 부동산과 관심단지를 전용면적별로 관리하세요."
+                      : tab === "records"
+                        ? "실거래가와 직접 평가 가격을 구분해 기록합니다."
+                        : "클라우드 저장과 실거래 데이터 연결을 준비하세요."}
               </p>
             </div>
           </div>
@@ -933,8 +843,8 @@ export default function Page() {
                   </select>
                 </div>
                 <span className="filter-note">
-                  관심단지는 실거래가 · {interval === "month" ? "월간" : "주간"}{" "}
-                  중앙값 기준 <Info size={14} />
+                  관심단지는 실거래가 · {interval === "month" ? "월간" : "주간"} 중앙값 기준{" "}
+                  <Info size={14} />
                 </span>
               </div>
               <section className="stats">
@@ -944,20 +854,15 @@ export default function Page() {
                       <House size={17} />
                       기준 부동산
                     </span>
-                    <span className="tag">
-                      {baseProperty?.owned ? "보유" : "비교 기준"}
-                    </span>
+                    <span className="tag">{baseProperty?.owned ? "보유" : "비교 기준"}</span>
                   </div>
                   <h3>{baseProperty?.name || "보유 부동산을 추가하세요"}</h3>
                   <div className="stat-price">
                     {money(latest(base)?.[base] as number)}
-                    <span>
-                      {baseProperty ? areaGroup(baseProperty.area) : ""}㎡
-                    </span>
+                    <span>{baseProperty ? areaGroup(baseProperty.area) : ""}㎡</span>
                   </div>
                   <p>
-                    {latest(base)?.month || "기록 없음"} ·{" "}
-                    {labels[effectiveBaseKind]} 중앙값
+                    {latest(base)?.month || "기록 없음"} · {labels[effectiveBaseKind]} 중앙값
                   </p>
                 </div>
                 <div className="stat">
@@ -966,9 +871,7 @@ export default function Page() {
                       <Building2 size={17} />
                       관심단지와의 간격
                     </span>
-                    <span className="tag light">
-                      {last?.month || "비교 자료 없음"}
-                    </span>
+                    <span className="tag light">{last?.month || "비교 자료 없음"}</span>
                   </div>
                   <select
                     className="property-select"
@@ -988,18 +891,13 @@ export default function Page() {
                     {gap != null && gap > 0 ? "+" : ""}
                     {money(gap)}
                     <span>
-                      {gap == null
-                        ? ""
-                        : gap >= 0
-                          ? "추가로 필요한 금액"
-                          : "기준보다 낮은 가격"}
+                      {gap == null ? "" : gap >= 0 ? "추가로 필요한 금액" : "기준보다 낮은 가격"}
                     </span>
                   </div>
                   <p>
                     {comparison ? areaGroup(comparison.area) : "—"}㎡ · 관심{" "}
-                    {String(last?.[`gap_target_month_${selected}`] || "—")} · 내
-                    집 {String(last?.[`gap_base_month_${selected}`] || "—")}{" "}
-                    기준
+                    {String(last?.[`gap_target_month_${selected}`] || "—")} · 내 집{" "}
+                    {String(last?.[`gap_base_month_${selected}`] || "—")} 기준
                   </p>
                 </div>
                 <div className="stat">
@@ -1023,15 +921,9 @@ export default function Page() {
                             : "최근 3년"}
                     의 변화
                   </h3>
-                  <div
-                    className={`stat-price ${change != null && change < 0 ? "teal" : ""}`}
-                  >
+                  <div className={`stat-price ${change != null && change < 0 ? "teal" : ""}`}>
                     {change != null &&
-                      (change < 0 ? (
-                        <ArrowDownRight size={28} />
-                      ) : (
-                        <ArrowUpRight size={28} />
-                      ))}
+                      (change < 0 ? <ArrowDownRight size={28} /> : <ArrowUpRight size={28} />)}
                     {money(change == null ? null : Math.abs(change))}
                     <span>
                       {change == null
@@ -1054,9 +946,7 @@ export default function Page() {
                 <div className="panel-heading">
                   <div>
                     <h2>
-                      {chart === "gap"
-                        ? "내 집과 관심단지의 가격 차이"
-                        : "단지별 가격 흐름"}{" "}
+                      {chart === "gap" ? "내 집과 관심단지의 가격 차이" : "단지별 가격 흐름"}{" "}
                       <span className="badge">관심단지 실거래가</span>
                     </h2>
                     <p>
@@ -1072,14 +962,13 @@ export default function Page() {
                       value={regionId}
                       onChange={(event) => selectRegion(event.target.value)}
                     >
-                        <option value="all">
-                          전체 지역 · {data.properties.length}곳
+                      <option value="all">전체 지역 · {data.properties.length}곳</option>
+                      {regionOptions(data.properties).map((region) => (
+                        <option value={region.id} key={region.id}>
+                          {region.label} ·{" "}
+                          {data.properties.filter((p) => p.district === region.id).length}곳
                         </option>
-                        {regionOptions(data.properties).map((region) => (
-                          <option value={region.id} key={region.id}>
-                            {region.label} · {data.properties.filter((p) => p.district === region.id).length}곳
-                          </option>
-                        ))}
+                      ))}
                     </select>
                     <div
                       className="segmented small chart-tabs"
@@ -1148,20 +1037,22 @@ export default function Page() {
                 </div>
                 <p className="chart-basis">
                   보유 주택: {labels[effectiveBaseKind]} · 관심단지: 실거래가 ·{" "}
-                  {interval === "month" ? "월간" : "주간"} 중앙값 · 각 시점의
-                  마지막 확인 가격으로 비교
+                  {interval === "month" ? "월간" : "주간"} 중앙값 · 각 시점의 마지막 확인 가격으로
+                  비교
                 </p>
                 <div className="chart-legend">
-                  {chart === "price" && baseProperty && (() => {
-                    const style = chartStyle(baseProperty);
-                    return (
-                      <span className="chart-legend-item active">
-                        <i style={{ background: style.color }} />
-                        <span>{baseProperty.name}</span>
-                        <em>{areaGroup(baseProperty.area)}㎡</em>
-                      </span>
-                    );
-                  })()}
+                  {chart === "price" &&
+                    baseProperty &&
+                    (() => {
+                      const style = chartStyle(baseProperty);
+                      return (
+                        <span className="chart-legend-item active">
+                          <i style={{ background: style.color }} />
+                          <span>{baseProperty.name}</span>
+                          <em>{areaGroup(baseProperty.area)}㎡</em>
+                        </span>
+                      );
+                    })()}
                   {watchProperties.map((p) => {
                     const active = chartPropertyIds.includes(p.id);
                     const style = chartStyle(p);
@@ -1195,15 +1086,8 @@ export default function Page() {
                 <div className="chart">
                   {!chartEmpty ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={rows}
-                        margin={{ top: 15, right: 20, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid
-                          vertical={false}
-                          stroke="#e9edf3"
-                          strokeDasharray="4 4"
-                        />
+                      <LineChart data={rows} margin={{ top: 15, right: 20, left: 0, bottom: 0 }}>
+                        <CartesianGrid vertical={false} stroke="#e9edf3" strokeDasharray="4 4" />
                         <XAxis
                           dataKey="label"
                           tickLine={false}
@@ -1224,9 +1108,7 @@ export default function Page() {
                           itemSorter={descendingTooltipValueKey}
                           formatter={(v) => {
                             const value = Number(v);
-                            return chart === "gap"
-                              ? `${money(value)} 차이`
-                              : money(value);
+                            return chart === "gap" ? `${money(value)} 차이` : money(value);
                           }}
                           contentStyle={{
                             border: "1px solid #e5e9f1",
@@ -1234,9 +1116,7 @@ export default function Page() {
                             fontSize: 14,
                           }}
                         />
-                        {chart === "gap" && (
-                          <ReferenceLine y={0} stroke="#c4cbd8" />
-                        )}
+                        {chart === "gap" && <ReferenceLine y={0} stroke="#c4cbd8" />}
                         {chartProperties.map((p) => {
                           const style = chartStyle(p);
                           return (
@@ -1264,18 +1144,13 @@ export default function Page() {
                       <p>{chartEmpty}</p>
                       <div className="heading-actions">
                         {chart === "gap" && (
-                          <button
-                            className="button"
-                            onClick={() => setChart("price")}
-                          >
+                          <button className="button" onClick={() => setChart("price")}>
                             단지별 가격 보기
                           </button>
                         )}
                         <button
                           className="button"
-                          onClick={() =>
-                            open(data.properties.length ? "record" : "property")
-                          }
+                          onClick={() => open(data.properties.length ? "record" : "property")}
                         >
                           가격 기록 추가
                         </button>
@@ -1285,9 +1160,8 @@ export default function Page() {
                 </div>
                 <div className="chart-foot">
                   <Info size={14} />
-                  {interval === "month" ? "월" : "주"}별 가격이 바뀐 시점마다
-                  양쪽의 마지막 확인 가격을 비교합니다. 카드에서 실제 기준
-                  시점을 확인하세요.
+                  {interval === "month" ? "월" : "주"}별 가격이 바뀐 시점마다 양쪽의 마지막 확인
+                  가격을 비교합니다. 카드에서 실제 기준 시점을 확인하세요.
                 </div>
               </section>
               <section className="watch-section">
@@ -1324,18 +1198,14 @@ export default function Page() {
                             </p>
                             <h3>{representative.name}</h3>
                           </div>
-                          <span className="area-count">
-                            {group.properties.length}개 평형
-                          </span>
+                          <span className="area-count">{group.properties.length}개 평형</span>
                         </div>
                         <div className="watch-area-list">
                           {group.properties.map((p) => {
                             const gapRow = [...rows]
                               .reverse()
                               .find((row) => typeof row[`gap_${p.id}`] === "number");
-                            const history = rows.filter(
-                              (row) => typeof row[p.id] === "number",
-                            );
+                            const history = rows.filter((row) => typeof row[p.id] === "number");
                             return (
                               <button
                                 className={`watch-area-row ${selected === p.id ? "selected" : ""}`}
@@ -1357,9 +1227,7 @@ export default function Page() {
                                 </span>
                                 <span className="watch-area-price">
                                   {money(history.at(-1)?.[p.id] as number)}
-                                  <small>
-                                    {history.at(-1)?.month || "기록 없음"} 실거래가
-                                  </small>
+                                  <small>{history.at(-1)?.month || "기록 없음"} 실거래가</small>
                                 </span>
                                 <span className="watch-area-gap">
                                   내 집과의 간격
@@ -1401,8 +1269,8 @@ export default function Page() {
             <section className="panel">
               <div className="panel-heading">
                 <h2>
-                  보유 · 관심단지 {visiblePropertyGroups.length}곳 · 평형{" "}
-                  {visibleProperties.length}개
+                  보유 · 관심단지 {visiblePropertyGroups.length}곳 · 평형 {visibleProperties.length}
+                  개
                 </h2>
                 <div className="heading-actions">
                   <select
@@ -1411,17 +1279,15 @@ export default function Page() {
                     value={regionId}
                     onChange={(event) => selectRegion(event.target.value)}
                   >
-                      <option value="all">전체 지역 · {data.properties.length}곳</option>
-                      {regionOptions(data.properties).map((region) => (
-                        <option value={region.id} key={region.id}>
-                          {region.label} · {data.properties.filter((p) => p.district === region.id).length}곳
-                        </option>
-                      ))}
+                    <option value="all">전체 지역 · {data.properties.length}곳</option>
+                    {regionOptions(data.properties).map((region) => (
+                      <option value={region.id} key={region.id}>
+                        {region.label} ·{" "}
+                        {data.properties.filter((p) => p.district === region.id).length}곳
+                      </option>
+                    ))}
                   </select>
-                  <button
-                    className="button primary"
-                    onClick={() => open("property")}
-                  >
+                  <button className="button primary" onClick={() => open("property")}>
                     <Plus size={16} />
                     단지 추가
                   </button>
@@ -1515,10 +1381,7 @@ export default function Page() {
                                 >
                                   가격 조회
                                 </button>
-                                <button
-                                  className="button"
-                                  onClick={() => open("property", p)}
-                                >
+                                <button className="button" onClick={() => open("property", p)}>
                                   수정
                                 </button>
                                 <button
@@ -1568,7 +1431,8 @@ export default function Page() {
                   <option value="all">전체 지역 · {data.properties.length}곳</option>
                   {regionOptions(data.properties).map((region) => (
                     <option value={region.id} key={region.id}>
-                      {region.label} · {data.properties.filter((p) => p.district === region.id).length}곳
+                      {region.label} ·{" "}
+                      {data.properties.filter((p) => p.district === region.id).length}곳
                     </option>
                   ))}
                 </select>
@@ -1588,11 +1452,7 @@ export default function Page() {
                   aria-label="기록 기간"
                   value={recordYears ?? "all"}
                   onChange={(event) =>
-                    setRecordYears(
-                      event.target.value === "all"
-                        ? null
-                        : Number(event.target.value),
-                    )
+                    setRecordYears(event.target.value === "all" ? null : Number(event.target.value))
                   }
                 >
                   <option value="all">전체 기간</option>
@@ -1649,9 +1509,7 @@ export default function Page() {
                     ))}
                   </tbody>
                 </table>
-                {!recent.length && (
-                  <div className="empty">조건에 맞는 가격 기록이 없습니다.</div>
-                )}
+                {!recent.length && <div className="empty">조건에 맞는 가격 기록이 없습니다.</div>}
               </div>
             </section>
           ) : (
@@ -1660,8 +1518,8 @@ export default function Page() {
                 <Cloud size={25} />
                 <h2>클라우드 동기화</h2>
                 <p>
-                  집업 계정으로 로그인하면 PC와 모바일에서 같은 기록을 볼 수
-                  있습니다. 현재 브라우저의 기록은 자동으로 업로드되지 않습니다.
+                  집업 계정으로 로그인하면 PC와 모바일에서 같은 기록을 볼 수 있습니다. 현재
+                  브라우저의 기록은 자동으로 업로드되지 않습니다.
                 </p>
                 <div className="connection">
                   {supabase ? "연결 설정됨" : "Supabase 연결 설정 대기"}
@@ -1669,8 +1527,7 @@ export default function Page() {
                 {session ? (
                   <>
                     <p>
-                      <strong>{profileLabel(profile)}</strong>으로
-                      로그인했습니다.
+                      <strong>{profileLabel(profile)}</strong>으로 로그인했습니다.
                     </p>
                     <button className="button" disabled={busy} onClick={logout}>
                       <LogOut size={16} />
@@ -1685,19 +1542,16 @@ export default function Page() {
                   </div>
                 )}
                 <p className="muted">
-                  모든 계정은 동일한 기능을 사용하며, 본인의 기록만 볼 수
-                  있습니다.
+                  모든 계정은 동일한 기능을 사용하며, 본인의 기록만 볼 수 있습니다.
                 </p>
               </section>
-              {session && (
-                <ProfileSettings profile={profile} onSaved={setProfile} />
-              )}
+              {session && <ProfileSettings profile={profile} onSaved={setProfile} />}
               <section className="panel settings-panel">
                 <Download size={25} />
                 <h2>기록 백업</h2>
                 <p>
-                  단지 정보와 전체 가격 기록을 JSON 파일로 내려받습니다. 장기
-                  보관이나 다른 도구로 이동할 때 사용할 수 있습니다.
+                  단지 정보와 전체 가격 기록을 JSON 파일로 내려받습니다. 장기 보관이나 다른 도구로
+                  이동할 때 사용할 수 있습니다.
                 </p>
                 <button className="button" onClick={exportData}>
                   <Download size={16} />
@@ -1708,13 +1562,12 @@ export default function Page() {
                 <Info size={25} />
                 <h2>가격 간격 계산 방식</h2>
                 <p>
-                  월간 또는 주간 중앙값을 사용하며 기준 부동산과 관심단지의 가격
-                  종류를 각각 선택할 수 있습니다. 관심단지 가격에서 기준 부동산
-                  가격을 뺍니다.
+                  월간 또는 주간 중앙값을 사용하며 기준 부동산과 관심단지의 가격 종류를 각각 선택할
+                  수 있습니다. 관심단지 가격에서 기준 부동산 가격을 뺍니다.
                 </p>
                 <p>
-                  각 시점의 마지막 확인 가격을 비교합니다. 단순 매매가격
-                  차이이며 세금·대출·거래 비용은 포함하지 않습니다.
+                  각 시점의 마지막 확인 가격을 비교합니다. 단순 매매가격 차이이며 세금·대출·거래
+                  비용은 포함하지 않습니다.
                 </p>
               </section>
               <SupportForm loggedIn={Boolean(session)} screen="설정" />
@@ -1749,13 +1602,9 @@ export default function Page() {
                 ? "가격 기록하기"
                 : bulkTradeModal
                   ? "선택 부동산 전체 다시 조회"
-                : "내 계정으로 로그인"}
+                  : "내 계정으로 로그인"}
           </h2>
-          <button
-            aria-label="닫기"
-            disabled={busy}
-            onClick={() => setModal(null)}
-          >
+          <button aria-label="닫기" disabled={busy} onClick={() => setModal(null)}>
             <X size={21} />
           </button>
         </div>
@@ -1763,18 +1612,15 @@ export default function Page() {
           <form onSubmit={saveProperty}>
             <label>
               구분
-              <select
-                name="owned"
-                defaultValue={editing?.owned ? "true" : "false"}
-              >
+              <select name="owned" defaultValue={editing?.owned ? "true" : "false"}>
                 <option value="false">관심단지</option>
                 <option value="true">보유 부동산</option>
               </select>
             </label>
             <PropertyAddress key={editing?.id || "new"} property={editing} />
             <p className="muted">
-              선택한 주소와 실거래 단지 식별값을 기준으로 조회합니다. 전용면적은
-              소수점 아래를 버려 같은 정수 면적끼리 함께 조회합니다.
+              선택한 주소와 실거래 단지 식별값을 기준으로 조회합니다. 전용면적은 소수점 아래를 버려
+              같은 정수 면적끼리 함께 조회합니다.
             </p>
             {!editing && (
               <>
@@ -1802,33 +1648,24 @@ export default function Page() {
                 </div>
                 {mode !== "cloud" && (
                   <p className="notice">
-                    클라우드 로그인 상태에서 단지를 추가하면 선택 기간의
-                    실거래가도 함께 저장됩니다.
+                    클라우드 로그인 상태에서 단지를 추가하면 선택 기간의 실거래가도 함께 저장됩니다.
                   </p>
                 )}
               </>
             )}
             {editing && (
               <p className="muted">
-                기존 가격 기록은 유지됩니다. 다른 단지나 다른 면적으로 바꾸려면
-                새 단지로 추가해 주세요.
+                기존 가격 기록은 유지됩니다. 다른 단지나 다른 면적으로 바꾸려면 새 단지로 추가해
+                주세요.
               </p>
             )}
             <button className="button primary full" disabled={busy}>
-              {busy
-                ? "처리 중…"
-                : editing
-                  ? "저장하기"
-                  : "단지 추가 및 실거래 불러오기"}
+              {busy ? "처리 중…" : editing ? "저장하기" : "단지 추가 및 실거래 불러오기"}
             </button>
           </form>
         ) : modal === "record" ? (
           <>
-            <div
-              className="segmented"
-              role="tablist"
-              aria-label="가격 기록 방식"
-            >
+            <div className="segmented" role="tablist" aria-label="가격 기록 방식">
               <button
                 type="button"
                 role="tab"
@@ -1879,13 +1716,7 @@ export default function Page() {
                   </label>
                   <label>
                     기준일
-                    <input
-                      name="date"
-                      type="date"
-                      max={today()}
-                      defaultValue={today()}
-                      required
-                    />
+                    <input name="date" type="date" max={today()} defaultValue={today()} required />
                   </label>
                 </div>
                 <label>
@@ -1947,14 +1778,9 @@ export default function Page() {
                   </label>
                 </div>
                 {mode !== "cloud" && (
-                  <p className="notice">
-                    실거래가를 다시 조회하려면 로그인해 주세요.
-                  </p>
+                  <p className="notice">실거래가를 다시 조회하려면 로그인해 주세요.</p>
                 )}
-                <button
-                  className="button primary full"
-                  disabled={busy || mode !== "cloud"}
-                >
+                <button className="button primary full" disabled={busy || mode !== "cloud"}>
                   {busy ? "조회 중…" : "선택 기간 실거래 다시 조회"}
                 </button>
               </form>
@@ -1996,18 +1822,12 @@ export default function Page() {
               </label>
             </div>
             <p className="muted">
-              기존 가격 기록은 유지되며, 선택 기간의 실거래가를 추가하거나
-              최신 정보로 갱신합니다.
+              기존 가격 기록은 유지되며, 선택 기간의 실거래가를 추가하거나 최신 정보로 갱신합니다.
             </p>
             {mode !== "cloud" && (
-              <p className="notice">
-                실거래가를 다시 조회하려면 로그인해 주세요.
-              </p>
+              <p className="notice">실거래가를 다시 조회하려면 로그인해 주세요.</p>
             )}
-            <button
-              className="button primary full"
-              disabled={busy || mode !== "cloud"}
-            >
+            <button className="button primary full" disabled={busy || mode !== "cloud"}>
               {busy ? "조회 중…" : "선택 기간 전체 다시 조회"}
             </button>
           </form>

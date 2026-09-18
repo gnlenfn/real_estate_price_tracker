@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Property } from "../lib/model";
-import {
-  groupPropertiesByComplex,
-  propertyAreaLabel,
-} from "../lib/property-display";
+import { groupPropertiesByComplex, propertyAreaLabel } from "../lib/property-display";
 
 const property = (overrides: Partial<Property>): Property => ({
   id: "property",

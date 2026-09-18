@@ -1,2 +1,39 @@
-import {adminAccessResponse,requireSuperAdmin} from '@/lib/admin-server';import {roleError,validUserId} from '@/lib/admin-roles';import {serverError} from '@/lib/api-error';import {appendAdminEvent} from '@/lib/admin-audit';
-export async function DELETE(request:Request,{params}:{params:Promise<{userId:string}>}){try{const {userId}=await params;if(!validUserId(userId))return Response.json({error:'대상 사용자를 찾을 수 없습니다.'},{status:404});const {user,admin}=await requireSuperAdmin(request),requestId=crypto.randomUUID(),{error}=await admin.schema('admin').rpc('revoke_admin',{p_actor_id:user.id,p_target_id:userId,p_request_id:requestId});if(error){const known=roleError(error.message);if(known){await appendAdminEvent(admin,{actorId:user.id,action:'admin.revoke',targetId:userId,requestId,outcome:'failed'});return Response.json({error:known.error},{status:known.status});}throw error;}return Response.json({ok:true});}catch(error){return adminAccessResponse(error)??serverError('admin.roles.revoke',error,'관리자 권한을 해제하지 못했습니다.');}}
+import { adminAccessResponse, requireSuperAdmin } from "@/lib/admin-server";
+import { roleError, validUserId } from "@/lib/admin-roles";
+import { serverError } from "@/lib/api-error";
+import { appendAdminEvent } from "@/lib/admin-audit";
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ userId: string }> },
+) {
+  try {
+    const { userId } = await params;
+    if (!validUserId(userId))
+      return Response.json({ error: "대상 사용자를 찾을 수 없습니다." }, { status: 404 });
+    const { user, admin } = await requireSuperAdmin(request),
+      requestId = crypto.randomUUID(),
+      { error } = await admin
+        .schema("admin")
+        .rpc("revoke_admin", { p_actor_id: user.id, p_target_id: userId, p_request_id: requestId });
+    if (error) {
+      const known = roleError(error.message);
+      if (known) {
+        await appendAdminEvent(admin, {
+          actorId: user.id,
+          action: "admin.revoke",
+          targetId: userId,
+          requestId,
+          outcome: "failed",
+        });
+        return Response.json({ error: known.error }, { status: known.status });
+      }
+      throw error;
+    }
+    return Response.json({ ok: true });
+  } catch (error) {
+    return (
+      adminAccessResponse(error) ??
+      serverError("admin.roles.revoke", error, "관리자 권한을 해제하지 못했습니다.")
+    );
+  }
+}

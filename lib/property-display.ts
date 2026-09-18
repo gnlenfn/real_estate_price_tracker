@@ -25,9 +25,7 @@ function complexKey(property: Property) {
   ].join(":");
 }
 
-export function groupPropertiesByComplex(
-  properties: readonly Property[],
-): PropertyComplexGroup[] {
+export function groupPropertiesByComplex(properties: readonly Property[]): PropertyComplexGroup[] {
   const groups = new Map<string, Property[]>();
   for (const property of properties) {
     const key = complexKey(property);

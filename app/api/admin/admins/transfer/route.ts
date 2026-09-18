@@ -1,2 +1,42 @@
-import {adminAccessResponse,requireSuperAdmin} from '@/lib/admin-server';import {roleError,validUserId} from '@/lib/admin-roles';import {serverError} from '@/lib/api-error';import {appendAdminEvent} from '@/lib/admin-audit';
-export async function POST(request:Request){try{const targetId=(await request.json()).userId;if(!validUserId(targetId))return Response.json({error:'대상 관리자를 찾을 수 없습니다.'},{status:404});const {user,admin}=await requireSuperAdmin(request),requestId=crypto.randomUUID(),{error}=await admin.schema('admin').rpc('transfer_super_admin',{p_actor_id:user.id,p_target_id:targetId,p_request_id:requestId});if(error){const known=roleError(error.message);if(known){await appendAdminEvent(admin,{actorId:user.id,action:'admin.transfer',targetId,requestId,outcome:'failed'});return Response.json({error:known.error},{status:known.status});}throw error;}return Response.json({ok:true});}catch(error){return adminAccessResponse(error)??serverError('admin.roles.transfer',error,'최고 관리자 이전에 실패했습니다. 잠시 후 다시 시도해 주세요.');}}
+import { adminAccessResponse, requireSuperAdmin } from "@/lib/admin-server";
+import { roleError, validUserId } from "@/lib/admin-roles";
+import { serverError } from "@/lib/api-error";
+import { appendAdminEvent } from "@/lib/admin-audit";
+export async function POST(request: Request) {
+  try {
+    const targetId = (await request.json()).userId;
+    if (!validUserId(targetId))
+      return Response.json({ error: "대상 관리자를 찾을 수 없습니다." }, { status: 404 });
+    const { user, admin } = await requireSuperAdmin(request),
+      requestId = crypto.randomUUID(),
+      { error } = await admin.schema("admin").rpc("transfer_super_admin", {
+        p_actor_id: user.id,
+        p_target_id: targetId,
+        p_request_id: requestId,
+      });
+    if (error) {
+      const known = roleError(error.message);
+      if (known) {
+        await appendAdminEvent(admin, {
+          actorId: user.id,
+          action: "admin.transfer",
+          targetId,
+          requestId,
+          outcome: "failed",
+        });
+        return Response.json({ error: known.error }, { status: known.status });
+      }
+      throw error;
+    }
+    return Response.json({ ok: true });
+  } catch (error) {
+    return (
+      adminAccessResponse(error) ??
+      serverError(
+        "admin.roles.transfer",
+        error,
+        "최고 관리자 이전에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+      )
+    );
+  }
+}
