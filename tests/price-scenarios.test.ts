@@ -177,3 +177,45 @@ test("scenario groups filter, sort, and attach each interest property's latest t
     ],
   );
 });
+
+test("scenario groups include only the selected integer area", () => {
+  const data: Data = {
+    properties: [
+      {
+        id: "home",
+        name: "내 집",
+        district: "11440",
+        dong: "아현동",
+        area: 84,
+        owned: true,
+        color: "#285ee8",
+      },
+      {
+        id: "small",
+        name: "소형 관심단지",
+        district: "11440",
+        dong: "공덕동",
+        area: 59.8,
+        owned: false,
+        color: "#12a18b",
+      },
+      {
+        id: "large",
+        name: "대형 관심단지",
+        district: "11440",
+        dong: "공덕동",
+        area: 84.9,
+        owned: false,
+        color: "#12a18b",
+      },
+    ],
+    records: [],
+  };
+
+  assert.deepEqual(
+    scenarioGroups(data, "home", "all", 59).flatMap((group) =>
+      group.rows.map((row) => row.property.id),
+    ),
+    ["small"],
+  );
+});

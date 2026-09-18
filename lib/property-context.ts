@@ -1,3 +1,4 @@
+import { areaGroup } from "./area";
 import type { Property } from "./model";
 
 const regionNames: Record<string, string> = {
@@ -71,4 +72,16 @@ export function regionOptions(properties: Property[]): Array<{ id: string; label
     }
   }
   return [...options.values()].sort((a, b) => a.label.localeCompare(b.label, "ko"));
+}
+
+export function propertyAreaOptions(properties: Property[]): number[] {
+  return [
+    ...new Set(properties.map((property) => areaGroup(property.area)).filter(Number.isFinite)),
+  ].toSorted((left, right) => left - right);
+}
+
+export function filterPropertiesByArea(properties: Property[], area: number | null): Property[] {
+  return area == null
+    ? properties
+    : properties.filter((property) => areaGroup(property.area) === area);
 }

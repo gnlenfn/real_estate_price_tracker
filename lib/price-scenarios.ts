@@ -46,13 +46,19 @@ export type ScenarioGroup = {
   rows: ScenarioRow[];
 };
 
-export function scenarioGroups(data: Data, baseId: string, regionId: string): ScenarioGroup[] {
+export function scenarioGroups(
+  data: Data,
+  baseId: string,
+  regionId: string,
+  area: number | null = null,
+): ScenarioGroup[] {
   const properties = data.properties
     .filter(
       (property) =>
         !property.owned &&
         property.id !== baseId &&
-        (regionId === "all" || property.district === regionId),
+        (regionId === "all" || property.district === regionId) &&
+        (area == null || areaGroup(property.area) === area),
     )
     .toSorted(
       (left, right) =>

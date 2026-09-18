@@ -7,7 +7,7 @@ import {
   scenarioGroups,
   scenarioRates,
 } from "@/lib/price-scenarios";
-import { regionOptions } from "@/lib/property-context";
+import { propertyAreaOptions, regionOptions } from "@/lib/property-context";
 import styles from "./price-scenarios.module.css";
 
 type Props = {
@@ -15,8 +15,10 @@ type Props = {
   baseId: string;
   baseKind: Kind;
   regionId: string;
+  area: number | null;
   onBaseChange: (id: string) => void;
   onRegionChange: (id: string) => void;
+  onAreaChange: (area: number | null) => void;
 };
 
 type ScenarioValue = ReturnType<typeof priceScenario>;
@@ -72,16 +74,22 @@ export function PriceScenarios({
   baseId,
   baseKind,
   regionId,
+  area,
   onBaseChange,
   onRegionChange,
+  onAreaChange,
 }: Props) {
   const interestProperties = data.properties.filter((property) => !property.owned);
+  const regionalInterestProperties = interestProperties.filter(
+    (property) => regionId === "all" || property.district === regionId,
+  );
+  const areas = propertyAreaOptions(regionalInterestProperties);
   const ownedProperties = data.properties.some((property) => property.owned)
     ? data.properties.filter((property) => property.owned)
     : data.properties;
   const baseProperty = data.properties.find((property) => property.id === baseId);
   const baseCurrent = latestMonthlyMedianPrice(data, baseId, baseKind);
-  const groups = scenarioGroups(data, baseId, regionId);
+  const groups = scenarioGroups(data, baseId, regionId, area);
   const regionCounts = new Map<string, number>();
   for (const property of interestProperties) {
     regionCounts.set(property.district, (regionCounts.get(property.district) ?? 0) + 1);
@@ -101,6 +109,29 @@ export function PriceScenarios({
             {regionOptions(interestProperties).map((region) => (
               <option value={region.id} key={region.id}>
                 {region.label} · {regionCounts.get(region.id) ?? 0}개 평형
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className={styles.filter}>
+          <span>평형</span>
+          <select
+            aria-label="가격 시나리오 평형"
+            value={area ?? "all"}
+            onChange={(event) =>
+              onAreaChange(event.target.value === "all" ? null : Number(event.target.value))
+            }
+          >
+            <option value="all">전체 평형 · {regionalInterestProperties.length}개</option>
+            {areas.map((option) => (
+              <option value={option} key={option}>
+                전용 {option}㎡ ·{" "}
+                {
+                  regionalInterestProperties.filter(
+                    (property) => areaGroup(property.area) === option,
+                  ).length
+                }
+                개
               </option>
             ))}
           </select>

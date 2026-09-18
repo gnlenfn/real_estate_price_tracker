@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { propertyRegionLabel, regionOptions } from "../lib/property-context";
+import {
+  filterPropertiesByArea,
+  propertyAreaOptions,
+  propertyRegionLabel,
+  regionOptions,
+} from "../lib/property-context";
 import type { Property } from "../lib/model";
 
 const property = (overrides: Partial<Property>): Property => ({
@@ -36,5 +41,19 @@ test("property regions support the abbreviated addresses returned by Kakao searc
   assert.equal(
     propertyRegionLabel(property({ jibun_address: "경기 성남시 분당구 정자동 2" })),
     "경기 성남시 분당구",
+  );
+});
+
+test("area filters use integer groups and retain only matching properties", () => {
+  const properties = [
+    property({ id: "small", area: 59.8 }),
+    property({ id: "large-a", area: 84 }),
+    property({ id: "large-b", area: 84.9 }),
+  ];
+
+  assert.deepEqual(propertyAreaOptions(properties), [59, 84]);
+  assert.deepEqual(
+    filterPropertiesByArea(properties, 84).map((item) => item.id),
+    ["large-a", "large-b"],
   );
 });

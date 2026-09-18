@@ -1715,6 +1715,7 @@ input::placeholder {
   overflow-wrap: anywhere;
 }
 .chart-region-filter,
+.chart-area-filter,
 .inline-region-filter {
   display: flex;
   align-items: center;
@@ -1768,6 +1769,7 @@ input::placeholder {
 }
 @media (max-width: 760px) {
   .chart-region-filter,
+  .chart-area-filter,
   .inline-region-filter {
     width: 100%;
     min-width: 0;

@@ -60,7 +60,12 @@ import {
   selectableBulkProperties,
   toggleSelectedPropertyId,
 } from "@/lib/bulk-trade";
-import { propertyRegionLabel, regionOptions } from "@/lib/property-context";
+import {
+  filterPropertiesByArea,
+  propertyAreaOptions,
+  propertyRegionLabel,
+  regionOptions,
+} from "@/lib/property-context";
 import { profileLabel, type Profile } from "@/lib/profile";
 import { tradeMonthsForNewProperty } from "@/lib/property-create";
 import { reportClientError } from "@/lib/client-error";
@@ -83,6 +88,8 @@ export default function Page() {
     [selected, setSelected] = useState("p1"),
     [chart, setChart] = useState<"gap" | "price">("gap"),
     [regionId, setRegionId] = useState("all"),
+    [chartArea, setChartArea] = useState<number | null>(null),
+    [scenarioArea, setScenarioArea] = useState<number | null>(null),
     [chartPropertyIds, setChartPropertyIds] = useState<string[]>([]);
   const [baseKind, setBaseKind] = useState<Kind | null>(null);
   const [recordProperty, setRecordProperty] = useState("all"),
@@ -211,6 +218,18 @@ export default function Page() {
     () => data.properties.filter((p) => regionId === "all" || p.district === regionId),
     [data.properties, regionId],
   );
+  const regionalInterestProperties = useMemo(
+    () => visibleProperties.filter((property) => !property.owned && property.id !== base),
+    [visibleProperties, base],
+  );
+  const chartAreas = useMemo(
+    () => propertyAreaOptions(regionalInterestProperties),
+    [regionalInterestProperties],
+  );
+  const scenarioAreas = useMemo(
+    () => propertyAreaOptions(regionalInterestProperties),
+    [regionalInterestProperties],
+  );
   const selectableProperties = useMemo(
     () => selectableBulkProperties(data.properties, regionId),
     [data.properties, regionId],
@@ -222,10 +241,10 @@ export default function Page() {
   const bulkTradeModal = modal === "bulk-trade";
   const watchProperties = useMemo(
     () =>
-      visibleProperties
-        .filter((p) => p.id !== base && !p.owned)
-        .toSorted((a, b) => a.name.localeCompare(b.name, "ko")),
-    [visibleProperties, base],
+      filterPropertiesByArea(regionalInterestProperties, chartArea).toSorted((a, b) =>
+        a.name.localeCompare(b.name, "ko"),
+      ),
+    [regionalInterestProperties, chartArea],
   );
   const watchPropertyGroups = useMemo(
     () => groupPropertiesByComplex(watchProperties),
@@ -311,6 +330,15 @@ export default function Page() {
     if (!watchProperties.some((p) => p.id === selected)) setSelected(watchProperties[0]?.id || "");
   }, [watchProperties, selected]);
   useEffect(() => {
+    if (chartArea != null && !chartAreas.includes(chartArea)) {
+      chartSelectionInitialized.current = false;
+      setChartArea(null);
+    }
+  }, [chartArea, chartAreas]);
+  useEffect(() => {
+    if (scenarioArea != null && !scenarioAreas.includes(scenarioArea)) setScenarioArea(null);
+  }, [scenarioArea, scenarioAreas]);
+  useEffect(() => {
     setSelectedPropertyIds((ids) => reconcileSelectedPropertyIds(data.properties, regionId, ids));
   }, [data.properties, regionId]);
   const recent = useMemo(
@@ -330,11 +358,18 @@ export default function Page() {
   );
   function selectRegion(nextRegionId: string) {
     setRegionId(nextRegionId);
-    const nextWatch = data.properties
-      .filter(
-        (p) => (nextRegionId === "all" || p.district === nextRegionId) && p.id !== base && !p.owned,
-      )
-      .toSorted((a, b) => a.name.localeCompare(b.name, "ko"));
+    const nextRegionalInterest = data.properties.filter(
+      (property) =>
+        !property.owned &&
+        property.id !== base &&
+        (nextRegionId === "all" || property.district === nextRegionId),
+    );
+    const nextAreas = propertyAreaOptions(nextRegionalInterest);
+    const nextChartArea = chartArea != null && nextAreas.includes(chartArea) ? chartArea : null;
+    setChartArea(nextChartArea);
+    const nextWatch = filterPropertiesByArea(nextRegionalInterest, nextChartArea).toSorted((a, b) =>
+      a.name.localeCompare(b.name, "ko"),
+    );
     setChartPropertyIds(nextWatch.slice(0, 5).map((p) => p.id));
     setSelected(nextWatch[0]?.id || "");
     if (
@@ -344,6 +379,14 @@ export default function Page() {
       )
     )
       setRecordProperty("all");
+  }
+  function selectChartArea(nextArea: number | null) {
+    setChartArea(nextArea);
+    const nextWatch = filterPropertiesByArea(regionalInterestProperties, nextArea).toSorted(
+      (a, b) => a.name.localeCompare(b.name, "ko"),
+    );
+    setChartPropertyIds(nextWatch.slice(0, 5).map((property) => property.id));
+    setSelected(nextWatch[0]?.id || "");
   }
   function toggleChartProperty(id: string) {
     setChartPropertyIds((ids) => {
@@ -970,6 +1013,29 @@ export default function Page() {
                         </option>
                       ))}
                     </select>
+                    <select
+                      className="chart-area-filter"
+                      aria-label="그래프 평형"
+                      value={chartArea ?? "all"}
+                      onChange={(event) =>
+                        selectChartArea(
+                          event.target.value === "all" ? null : Number(event.target.value),
+                        )
+                      }
+                    >
+                      <option value="all">전체 평형 · {regionalInterestProperties.length}개</option>
+                      {chartAreas.map((area) => (
+                        <option value={area} key={area}>
+                          전용 {area}㎡ ·{" "}
+                          {
+                            regionalInterestProperties.filter(
+                              (property) => areaGroup(property.area) === area,
+                            ).length
+                          }
+                          개
+                        </option>
+                      ))}
+                    </select>
                     <div
                       className="segmented small chart-tabs"
                       role="tablist"
@@ -1259,11 +1325,13 @@ export default function Page() {
               baseId={base}
               baseKind={effectiveBaseKind}
               regionId={regionId}
+              area={scenarioArea}
               onBaseChange={(id) => {
                 setBase(id);
                 setBaseKind(null);
               }}
               onRegionChange={selectRegion}
+              onAreaChange={setScenarioArea}
             />
           ) : tab === "properties" ? (
             <section className="panel">
