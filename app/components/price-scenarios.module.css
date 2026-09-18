@@ -1,0 +1,390 @@
+.page {
+  display: grid;
+  gap: 18px;
+}
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  margin-top: -76px;
+}
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.filter > span {
+  color: #78859a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.filter select {
+  max-width: 250px;
+  padding: 9px 30px 9px 11px;
+  color: #47566e;
+  background: #fff;
+  border: 1px solid #dfe5ee;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.baseCard {
+  display: grid;
+  grid-template-columns: 42px minmax(220px, 1fr) auto minmax(250px, 0.8fr);
+  align-items: center;
+  gap: 12px;
+  padding: 17px 20px;
+  background: #eef4ff;
+  border: 1px solid #d5e2fb;
+  border-radius: 11px;
+}
+.homeIcon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: #2864dc;
+  background: #dfeaff;
+  border-radius: 9px;
+}
+.baseCard div > small,
+.basePrice small {
+  display: block;
+  color: #7588a8;
+  font-size: 10px;
+}
+.baseCard div > strong {
+  font-size: 14px;
+}
+.basePrice {
+  padding-right: 24px;
+  color: #214d9d;
+  border-right: 1px solid #cddcf7;
+  font-size: 24px;
+  font-weight: 800;
+}
+.basePrice small {
+  font-weight: 400;
+}
+.baseCard p {
+  color: #6b7f9f;
+  font-size: 11px;
+}
+
+.panel {
+  min-width: 0;
+}
+.panelHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 21px 23px 17px;
+  border-bottom: 1px solid #eef1f5;
+}
+.panelHeading h2 {
+  font-size: 17px;
+}
+.panelHeading p {
+  margin-top: 3px;
+  color: #8a95a6;
+  font-size: 11px;
+}
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: #7b8799;
+  font-size: 10px;
+}
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.downDot {
+  background: #dfeaff;
+}
+.currentDot {
+  background: #dff5f0;
+}
+.upDot {
+  background: #fff0e8;
+}
+
+.tableWrap {
+  overflow: auto;
+}
+.tableWrap table {
+  width: 100%;
+  min-width: 1550px;
+  border-spacing: 0;
+  border-collapse: separate;
+  table-layout: fixed;
+  font-size: 11px;
+}
+.tableWrap th,
+.tableWrap td {
+  padding: 0;
+  text-align: center;
+  border-right: 1px solid #f0f2f6;
+  border-bottom: 1px solid #edf0f5;
+}
+.propertyHeader {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  width: 230px;
+  background: #f8fafd;
+}
+.bandHeader th {
+  height: 37px;
+  font-weight: 700;
+}
+.downBand {
+  color: #2856af;
+  background: #eef4ff;
+}
+.upBand {
+  color: #bd5a2e;
+  background: #fff6f1;
+}
+.downBand svg,
+.upBand svg {
+  vertical-align: -3px;
+  margin-right: 5px;
+}
+.currentHeader {
+  width: 120px;
+  color: #087d71;
+  background: #effaf7;
+  border-right: 2px solid #b7e3da !important;
+  border-left: 2px solid #b7e3da !important;
+}
+.rateHeader th {
+  height: 35px;
+  color: #7d899a;
+  background: #fafbfd;
+  font-weight: 600;
+}
+.rateHeader th:nth-child(-n + 6) {
+  color: #2856af;
+  background: #f2f6ff;
+}
+.rateHeader th:nth-child(n + 7) {
+  color: #c16a43;
+  background: #fffaf7;
+}
+
+.regionRow th,
+.regionRow td {
+  height: 37px;
+  background: #f5f7fa;
+}
+.regionLabel {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 230px;
+  padding: 0 14px !important;
+  color: #4e6079;
+  text-align: left !important;
+  font-size: 11px;
+  letter-spacing: 0.1px;
+}
+.regionLabel span {
+  margin-left: 8px;
+  color: #8c98a9;
+  font-weight: 400;
+}
+.regionFill {
+  border-right: 0 !important;
+}
+.propertyCell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 80px;
+  padding: 0 13px !important;
+  text-align: left !important;
+  background: #fff !important;
+}
+.buildingIcon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex-shrink: 0;
+  place-items: center;
+  color: #6388c7;
+  background: #edf3ff;
+  border-radius: 8px;
+}
+.propertyCell > span:last-child {
+  min-width: 0;
+}
+.propertyCell strong,
+.propertyCell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.propertyCell strong {
+  color: #2a3850;
+  font-size: 12px;
+}
+.propertyCell small {
+  margin-top: 2px;
+  color: #929dae;
+  font-size: 9px;
+}
+
+.downCell,
+.upCell,
+.currentCell {
+  height: 80px;
+  overflow: hidden;
+}
+.downCell {
+  background: #fbfcff;
+}
+.upCell {
+  background: #fffdfb;
+}
+.downCell:hover {
+  background: #edf3ff;
+}
+.upCell:hover {
+  background: #fff5ef;
+}
+.downCell strong,
+.upCell strong,
+.currentCell strong,
+.downCell span,
+.upCell span,
+.currentCell span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.downCell strong {
+  color: #204e9f;
+  font-size: 12px;
+}
+.upCell strong {
+  color: #ba6038;
+  font-size: 12px;
+}
+.downCell span,
+.upCell span {
+  margin-top: 1px;
+  color: #98a3b1;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.currentCell {
+  background: #f2fbf8;
+  border-right: 2px solid #b7e3da !important;
+  border-left: 2px solid #b7e3da !important;
+}
+.currentCell strong {
+  color: #167c71;
+  font-size: 13px;
+}
+.currentCell span {
+  margin-top: 3px;
+  color: #6f908a;
+  font-size: 9px;
+}
+
+.footnote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  color: #8490a2;
+  background: #fafbfd;
+  font-size: 10px;
+}
+.footnote > span {
+  padding: 2px 7px;
+  color: #526986;
+  background: #edf1f6;
+  border-radius: 4px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .toolbar {
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+  .baseCard {
+    grid-template-columns: 42px 1fr auto;
+  }
+  .baseCard p {
+    grid-column: 2 / -1;
+  }
+  .basePrice {
+    padding: 0;
+    border: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+  }
+  .filter {
+    width: 100%;
+  }
+  .filter > span {
+    width: 58px;
+  }
+  .filter select {
+    flex: 1;
+    max-width: none;
+  }
+  .baseCard {
+    grid-template-columns: 38px 1fr;
+  }
+  .basePrice {
+    grid-column: 2;
+  }
+  .baseCard p {
+    grid-column: 1 / -1;
+  }
+  .panelHeading {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .legend {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .tableWrap table {
+    min-width: 1480px;
+  }
+  .propertyHeader,
+  .regionLabel {
+    width: 200px;
+  }
+  .footnote {
+    align-items: flex-start;
+  }
+}
