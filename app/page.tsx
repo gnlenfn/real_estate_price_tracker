@@ -28,6 +28,7 @@ import {
   Layers,
   Cloud,
   Info,
+  TableProperties,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { areaGroup } from "@/lib/area";
@@ -41,6 +42,7 @@ import { PropertyAddress } from "@/app/components/property-address";
 import { MonthPicker } from "@/app/components/month-picker";
 import { ProfileSettings } from "@/app/components/profile-settings";
 import { SupportForm } from "@/app/components/support-form";
+import { PriceScenarios } from "@/app/components/price-scenarios";
 import {
   Data,
   Property,
@@ -757,6 +759,7 @@ export default function Page() {
         <nav>
           {[
             ["overview", "가격 간격", ChartNoAxesCombined],
+            ["scenarios", "가격 시나리오", TableProperties],
             ["properties", "보유 · 관심단지", Building2],
             ["records", "가격 기록", NotebookPen],
           ].map(([id, label, Icon]) => (
@@ -799,6 +802,8 @@ export default function Page() {
             <strong>
               {tab === "overview"
                 ? "가격 간격"
+                : tab === "scenarios"
+                  ? "가격 시나리오"
                 : tab === "properties"
                   ? "보유 · 관심단지"
                   : tab === "records"
@@ -859,6 +864,8 @@ export default function Page() {
               <h1>
                 {tab === "overview"
                   ? "내 집과의 거리, 한눈에"
+                  : tab === "scenarios"
+                    ? "가격이 움직이면, 격차는?"
                   : tab === "properties"
                     ? "나의 단지 모아보기"
                     : tab === "records"
@@ -868,6 +875,8 @@ export default function Page() {
               <p>
                 {tab === "overview"
                   ? "관심단지까지의 가격 간격이 어떻게 달라지고 있는지 살펴보세요."
+                  : tab === "scenarios"
+                    ? "내 집과 관심단지가 같은 비율로 움직일 때 가격 격차를 비교하세요."
                   : tab === "properties"
                     ? "보유 부동산과 관심단지를 전용면적별로 관리하세요."
                     : tab === "records"
@@ -1376,6 +1385,18 @@ export default function Page() {
                 </div>
               </section>
             </>
+          ) : tab === "scenarios" ? (
+            <PriceScenarios
+              data={data}
+              baseId={base}
+              baseKind={effectiveBaseKind}
+              regionId={regionId}
+              onBaseChange={(id) => {
+                setBase(id);
+                setBaseKind(null);
+              }}
+              onRegionChange={selectRegion}
+            />
           ) : tab === "properties" ? (
             <section className="panel">
               <div className="panel-heading">
