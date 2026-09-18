@@ -1,8 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, FormEvent } from "react";
 import {
-  AreaChart,
-  Area,
   LineChart,
   Line,
   XAxis,
@@ -73,6 +71,10 @@ import { profileLabel, type Profile } from "@/lib/profile";
 import { tradeMonthsForNewProperty } from "@/lib/property-create";
 import { reportClientError } from "@/lib/client-error";
 import { descendingTooltipValueKey } from "@/lib/chart-tooltip";
+import {
+  groupPropertiesByComplex,
+  propertyAreaLabel,
+} from "@/lib/property-display";
 import type { Session } from "@supabase/supabase-js";
 const empty: Data = { properties: [], records: [] };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -257,6 +259,22 @@ export default function Page() {
         .toSorted((a, b) => a.name.localeCompare(b.name, "ko")),
     [visibleProperties, base],
   );
+  const watchPropertyGroups = useMemo(
+    () => groupPropertiesByComplex(watchProperties),
+    [watchProperties],
+  );
+  const visiblePropertyGroups = useMemo(
+    () =>
+      groupPropertiesByComplex(
+        visibleProperties.toSorted(
+          (a, b) =>
+            propertyRegionLabel(a).localeCompare(propertyRegionLabel(b), "ko") ||
+            a.name.localeCompare(b.name, "ko") ||
+            areaGroup(a.area) - areaGroup(b.area),
+        ),
+      ),
+    [visibleProperties],
+  );
   const selectedChartProperties = useMemo(
     () => watchProperties.filter((p) => chartPropertyIds.includes(p.id)),
     [watchProperties, chartPropertyIds],
@@ -382,7 +400,7 @@ export default function Page() {
     setChartPropertyIds((ids) => {
       if (ids.includes(id)) return ids.filter((value) => value !== id);
       if (ids.length >= 10) {
-        setMessage("그래프에는 관심단지 10곳까지 표시할 수 있습니다.");
+        setMessage("그래프에는 관심 평형 10개까지 표시할 수 있습니다.");
         return ids;
       }
       return [...ids, id];
@@ -953,7 +971,7 @@ export default function Page() {
                     <option value="">관심단지를 선택하세요</option>
                     {watchProperties.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
+                        {propertyAreaLabel(p)}
                       </option>
                     ))}
                   </select>
@@ -1130,7 +1148,8 @@ export default function Page() {
                     return (
                       <span className="chart-legend-item active">
                         <i style={{ background: style.color }} />
-                        {baseProperty.name}
+                        <span>{baseProperty.name}</span>
+                        <em>{areaGroup(baseProperty.area)}㎡</em>
                       </span>
                     );
                   })()}
@@ -1146,12 +1165,13 @@ export default function Page() {
                         onClick={() => toggleChartProperty(p.id)}
                       >
                         <i style={{ background: active ? style.color : "#b7c1d0" }} />
-                        {p.name}
+                        <span>{p.name}</span>
+                        <em>{areaGroup(p.area)}㎡</em>
                       </button>
                     );
                   })}
                   <span className="chart-legend-count">
-                    그래프 단지 {selectedChartProperties.length}/10
+                    그래프 평형 {selectedChartProperties.length}/10
                   </span>
                   <button
                     type="button"
@@ -1215,7 +1235,7 @@ export default function Page() {
                               key={p.id}
                               type="linear"
                               dataKey={chart === "gap" ? `gap_${p.id}` : p.id}
-                              name={p.name}
+                              name={propertyAreaLabel(p)}
                               stroke={style.color}
                               strokeDasharray={style.dash}
                               strokeWidth={p.id === base ? 3 : 2.5}
@@ -1263,78 +1283,89 @@ export default function Page() {
               </section>
               <section className="watch-section">
                 <div className="section-title">
-                  <h2>
-                    관심단지{" "}
-                    <span>{watchProperties.length}</span>
-                  </h2>
+                  <div>
+                    <h2>관심단지</h2>
+                    <p>
+                      단지 {watchPropertyGroups.length}곳 · 평형 {watchProperties.length}개
+                    </p>
+                  </div>
                   <button onClick={() => open("property")}>
                     <Plus size={16} />
                     단지 추가
                   </button>
                 </div>
                 <div className="watch-grid">
-                  {watchProperties.map((p) => {
-                      const r = [...rows]
-                        .reverse()
-                        .find((r) => typeof r[`gap_${p.id}`] === "number");
-                      const history = rows.filter(
-                        (r) => typeof r[p.id] === "number",
-                      );
-                      return (
-                        <button
-                          className={`watch-card ${selected === p.id ? "selected" : ""}`}
-                          key={p.id}
-                          onClick={() => {
-                            setSelected(p.id);
-                            setChart("gap");
-                          }}
-                        >
-                          <div className="watch-top">
-                            <span
-                              className="building-icon"
-                              style={{
-                                color: p.color,
-                                background: `${p.color}12`,
-                              }}
-                            >
-                              <Building2 size={21} />
-                            </span>
-                            <span>
-                              {p.dong} · {areaGroup(p.area)}㎡
-                            </span>
-                            <ArrowUpRight size={17} />
+                  {watchPropertyGroups.map((group) => {
+                    const representative = group.properties[0];
+                    return (
+                      <article className="watch-complex-card" key={group.key}>
+                        <div className="watch-complex-header">
+                          <span
+                            className="building-icon"
+                            style={{
+                              color: representative.color,
+                              background: `${representative.color}12`,
+                            }}
+                          >
+                            <Building2 size={21} />
+                          </span>
+                          <div>
+                            <p>
+                              {propertyRegionLabel(representative)} · {representative.dong}
+                            </p>
+                            <h3>{representative.name}</h3>
                           </div>
-                          <h3>{p.name}</h3>
-                          <div className="watch-price">
-                            {money(history.at(-1)?.[p.id] as number)}
-                            <small>
-                              {history.at(-1)?.month || "기록 없음"}
-                            </small>
-                          </div>
-                          <div className="spark">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <AreaChart data={rows}>
-                                <Area
-                                  dot={{ r: 2 }}
-                                  connectNulls
-                                  dataKey={p.id}
-                                  stroke={p.color}
-                                  fill={`${p.color}12`}
-                                  strokeWidth={2}
-                                  isAnimationActive={false}
-                                />
-                              </AreaChart>
-                            </ResponsiveContainer>
-                          </div>
-                          <div className="watch-footer">
-                            <span>내 집과의 간격</span>
-                            <strong style={{ color: p.color }}>
-                              {money(r?.[`gap_${p.id}`] as number)}
-                            </strong>
-                          </div>
-                        </button>
-                      );
-                    })}
+                          <span className="area-count">
+                            {group.properties.length}개 평형
+                          </span>
+                        </div>
+                        <div className="watch-area-list">
+                          {group.properties.map((p) => {
+                            const gapRow = [...rows]
+                              .reverse()
+                              .find((row) => typeof row[`gap_${p.id}`] === "number");
+                            const history = rows.filter(
+                              (row) => typeof row[p.id] === "number",
+                            );
+                            return (
+                              <button
+                                className={`watch-area-row ${selected === p.id ? "selected" : ""}`}
+                                key={p.id}
+                                onClick={() => {
+                                  setSelected(p.id);
+                                  setChart("gap");
+                                }}
+                              >
+                                <span
+                                  className="area-chip"
+                                  style={{
+                                    color: p.color,
+                                    borderColor: `${p.color}35`,
+                                    background: `${p.color}0c`,
+                                  }}
+                                >
+                                  {areaGroup(p.area)}㎡
+                                </span>
+                                <span className="watch-area-price">
+                                  {money(history.at(-1)?.[p.id] as number)}
+                                  <small>
+                                    {history.at(-1)?.month || "기록 없음"} 실거래가
+                                  </small>
+                                </span>
+                                <span className="watch-area-gap">
+                                  내 집과의 간격
+                                  <strong style={{ color: p.color }}>
+                                    {money(gapRow?.[`gap_${p.id}`] as number)}
+                                  </strong>
+                                </span>
+                                <ArrowUpRight size={17} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    );
+                  })}
                   <button className="add-card" onClick={() => open("property")}>
                     <span>
                       <Plus size={23} />
@@ -1348,7 +1379,10 @@ export default function Page() {
           ) : tab === "properties" ? (
             <section className="panel">
               <div className="panel-heading">
-                <h2>보유 · 관심단지 {visibleProperties.length}곳</h2>
+                <h2>
+                  보유 · 관심단지 {visiblePropertyGroups.length}곳 · 평형{" "}
+                  {visibleProperties.length}개
+                </h2>
                 <div className="heading-actions">
                   <select
                     className="inline-region-filter"
@@ -1403,71 +1437,84 @@ export default function Page() {
                 {!visibleProperties.length && (
                   <div className="empty">보유 부동산부터 추가해 보세요.</div>
                 )}
-                {visibleProperties
-                  .toSorted(
-                    (a, b) =>
-                      propertyRegionLabel(a).localeCompare(
-                        propertyRegionLabel(b),
-                        "ko",
-                      ) || a.name.localeCompare(b.name, "ko"),
-                  )
-                  .map((p) => (
-                  <div className="property-row" key={p.id}>
-                    <label className="property-selection">
-                      <input
-                        type="checkbox"
-                        aria-label={`${p.name} 선택`}
-                        checked={selectedPropertyIds.includes(p.id)}
-                        disabled={busy}
-                        onChange={() => togglePropertySelection(p.id)}
-                      />
-                    </label>
-                    <div className="building-icon">
-                      <Building2 />
+                {visiblePropertyGroups.map((group) => {
+                  const representative = group.properties[0];
+                  return (
+                    <div className="property-complex-group" key={group.key}>
+                      <div className="property-group-header">
+                        <div className="building-icon">
+                          <Building2 />
+                        </div>
+                        <div>
+                          <h3>
+                            {representative.name}{" "}
+                            <span
+                              className={`badge ${representative.owned ? "owned-badge" : "watch-badge"}`}
+                            >
+                              {representative.owned ? "보유" : "관심"}
+                            </span>
+                          </h3>
+                          <p>
+                            <strong className="property-region-name">
+                              {propertyRegionLabel(representative)}
+                            </strong>
+                            {" · "}
+                            {representative.dong}
+                          </p>
+                        </div>
+                        <span>{group.properties.length}개 평형</span>
+                      </div>
+                      <div className="property-area-list">
+                        {group.properties.map((p) => {
+                          const priceRow = latest(p.id);
+                          return (
+                            <div className="property-area-row" key={p.id}>
+                              <label className="property-selection">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`${propertyAreaLabel(p)} 선택`}
+                                  checked={selectedPropertyIds.includes(p.id)}
+                                  disabled={busy}
+                                  onChange={() => togglePropertySelection(p.id)}
+                                />
+                              </label>
+                              <span className="property-area-branch" />
+                              <strong>전용 {areaGroup(p.area)}㎡</strong>
+                              <span className="property-latest-price">
+                                최근 가격 <b>{money(priceRow?.[p.id] as number)}</b>
+                              </span>
+                              <span>{priceRow?.month || "기록 없음"} 기준</span>
+                              <div className="row-actions">
+                                <button
+                                  className="button"
+                                  onClick={() => {
+                                    open("record", p);
+                                    setRecordMode("trade");
+                                  }}
+                                >
+                                  가격 조회
+                                </button>
+                                <button
+                                  className="button"
+                                  onClick={() => open("property", p)}
+                                >
+                                  수정
+                                </button>
+                                <button
+                                  aria-label={`${propertyAreaLabel(p)} 삭제`}
+                                  disabled={busy}
+                                  onClick={() => removeProperty(p)}
+                                >
+                                  <Trash2 size={17} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div>
-                      <h3>
-                        {p.name}{" "}
-                        <span
-                          className={`badge ${p.owned ? "owned-badge" : "watch-badge"}`}
-                        >
-                          {p.owned ? "보유" : "관심"}
-                        </span>
-                      </h3>
-                      <p>
-                        <strong className="property-region-name">
-                          {propertyRegionLabel(p)}
-                        </strong>
-                        {" · "}
-                        {p.dong} · 전용 {areaGroup(p.area)}㎡
-                      </p>
-                    </div>
-                    <div className="row-actions">
-                      <button
-                        className="button"
-                        onClick={() => {
-                          open("record", p);
-                          setRecordMode("trade");
-                        }}
-                      >
-                        가격 조회
-                      </button>
-                      <button
-                        className="button"
-                        onClick={() => open("property", p)}
-                      >
-                        수정
-                      </button>
-                      <button
-                        aria-label={`${p.name} 삭제`}
-                        disabled={busy}
-                        onClick={() => removeProperty(p)}
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ) : tab === "records" ? (
