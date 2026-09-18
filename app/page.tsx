@@ -72,6 +72,7 @@ import {
 import { profileLabel, type Profile } from "@/lib/profile";
 import { tradeMonthsForNewProperty } from "@/lib/property-create";
 import { reportClientError } from "@/lib/client-error";
+import { descendingTooltipValueKey } from "@/lib/chart-tooltip";
 import type { Session } from "@supabase/supabase-js";
 const empty: Data = { properties: [], records: [] };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -1191,6 +1192,7 @@ export default function Page() {
                         />
                         <Tooltip
                           labelFormatter={(_l, p) => p[0]?.payload?.month || ""}
+                          itemSorter={descendingTooltipValueKey}
                           formatter={(v) => {
                             const value = Number(v);
                             return chart === "gap"
