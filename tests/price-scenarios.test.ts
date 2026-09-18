@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PriceScenarios } from "../app/components/price-scenarios";
 import type { Data } from "../lib/model";
 import {
   latestMonthlyMedianPrice,
@@ -36,4 +39,67 @@ test("current price uses the latest month median for the selected price kind", (
     month: "2026-09",
     price: 160000,
   });
+});
+
+test("the current column emphasizes the gap and lists both current prices", () => {
+  const data: Data = {
+    properties: [
+      {
+        id: "home",
+        name: "내 집",
+        district: "11440",
+        dong: "아현동",
+        area: 84,
+        owned: true,
+        color: "#285ee8",
+        road_address: "서울특별시 마포구 마포대로 1",
+      },
+      {
+        id: "watch",
+        name: "관심단지",
+        district: "11440",
+        dong: "공덕동",
+        area: 84,
+        owned: false,
+        color: "#12a18b",
+        road_address: "서울특별시 마포구 마포대로 2",
+      },
+    ],
+    records: [
+      {
+        id: "home-price",
+        property_id: "home",
+        date: "2026-09-01",
+        price: 100000,
+        kind: "estimate",
+        source: "test",
+        note: "",
+      },
+      {
+        id: "watch-price",
+        property_id: "watch",
+        date: "2026-09-01",
+        price: 150000,
+        kind: "trade",
+        source: "test",
+        note: "",
+      },
+    ],
+  };
+
+  const markup = renderToStaticMarkup(
+    createElement(PriceScenarios, {
+      data,
+      baseId: "home",
+      baseKind: "estimate",
+      regionId: "all",
+      onBaseChange: () => undefined,
+      onRegionChange: () => undefined,
+    }),
+  );
+
+  assert.match(
+    markup,
+    /class="scenario-current-cell"><strong>\+5억<\/strong><span>관심 15억<\/span><span>내 집 10억<\/span>/,
+  );
 });

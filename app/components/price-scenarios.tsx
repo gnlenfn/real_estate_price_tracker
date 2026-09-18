@@ -213,10 +213,11 @@ export function PriceScenarios({
                         <td className="scenario-current-cell">
                           {targetCurrent ? (
                             <>
-                              <strong>{money(targetCurrent.price)}</strong>
-                              <span>
-                                격차 {gapMoney(targetCurrent.price - baseCurrent.price)}
-                              </span>
+                              <strong>
+                                {gapMoney(targetCurrent.price - baseCurrent.price)}
+                              </strong>
+                              <span>관심 {money(targetCurrent.price)}</span>
+                              <span>내 집 {money(baseCurrent.price)}</span>
                             </>
                           ) : (
                             <><strong>—</strong><span>가격 기록 없음</span></>
