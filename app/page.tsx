@@ -70,6 +70,7 @@ import { profileLabel, type Profile } from "@/lib/profile";
 import { tradeMonthsForNewProperty } from "@/lib/property-create";
 import { reportClientError } from "@/lib/client-error";
 import { descendingTooltipValueKey } from "@/lib/chart-tooltip";
+import { chartDomain } from "@/lib/chart-scale";
 import { groupPropertiesByComplex, propertyAreaLabel } from "@/lib/property-display";
 import type { Session } from "@supabase/supabase-js";
 const empty: Data = { properties: [], records: [] };
@@ -270,6 +271,13 @@ export default function Page() {
     chart === "price"
       ? [...(baseProperty ? [baseProperty] : []), ...selectedChartProperties]
       : selectedChartProperties;
+  const yAxisDomain = chartDomain(
+    chartProperties.flatMap((property) =>
+      rows.map((row) => row[chart === "gap" ? `gap_${property.id}` : property.id]),
+    ),
+  );
+  const showsGapBaseline =
+    chart === "gap" && Boolean(yAxisDomain && yAxisDomain[0] <= 0 && yAxisDomain[1] >= 0);
   const chartStyles = [
     ["#0f766e", undefined],
     ["#9333ea", "6 3"],
@@ -1104,7 +1112,7 @@ export default function Page() {
                 <p className="chart-basis">
                   보유 주택: {labels[effectiveBaseKind]} · 관심단지: 실거래가 ·{" "}
                   {interval === "month" ? "월간" : "주간"} 중앙값 · 각 시점의 마지막 확인 가격으로
-                  비교
+                  비교 · 표시 중인 값에 맞춰 세로축 자동 조정
                 </p>
                 <div className="chart-legend">
                   {chart === "price" &&
@@ -1163,7 +1171,12 @@ export default function Page() {
                           dy={12}
                         />
                         <YAxis
-                          tickFormatter={(v) => `${Number(v) / 10000}`}
+                          domain={yAxisDomain || undefined}
+                          tickFormatter={(v) =>
+                            (Number(v) / 10000).toLocaleString("ko-KR", {
+                              maximumFractionDigits: 1,
+                            })
+                          }
                           tickLine={false}
                           axisLine={false}
                           tick={{ fill: "#8993a4", fontSize: 12 }}
@@ -1182,7 +1195,7 @@ export default function Page() {
                             fontSize: 14,
                           }}
                         />
-                        {chart === "gap" && <ReferenceLine y={0} stroke="#c4cbd8" />}
+                        {showsGapBaseline && <ReferenceLine y={0} stroke="#c4cbd8" />}
                         {chartProperties.map((p) => {
                           const style = chartStyle(p);
                           return (
